@@ -185,8 +185,12 @@ fun ThreadDetailScreen(
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
-                prompt.options.forEach { opt ->
-                    item(key = "opt${opt.key}") {
+                // Key by POSITION, not opt.key: the server digit isn't guaranteed
+                // unique (a plan's numbered lists can repeat 1./2./3.), and a
+                // duplicate LazyColumn key throws when the chips compose into view
+                // — i.e. exactly when you scroll to the bottom to accept a plan.
+                prompt.options.forEachIndexed { i, opt ->
+                    item(key = "opt$i") {
                         Chip(
                             label = { Text("${opt.key}. ${opt.label}", maxLines = 2) },
                             onClick = { vm.selectOption(opt.key) },
