@@ -2,6 +2,7 @@ package com.darney.bubblewatch.cowork.threads
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -17,6 +18,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.wear.compose.foundation.lazy.ScalingLazyColumn
@@ -40,6 +42,7 @@ private val AMBER = Color(0xFFFFB300)
 private val BLUE = Color(0xFF6FA8DC)
 private val GREY = Color(0xFF888888)
 private val GREEN = Color(0xFF57D9A3) // has tappable options — answer silently
+private val RED = Color(0xFFE06C6C)   // context/cost pressure — session hygiene warning
 
 /** How many thread chips to show at most. NEEDS_INPUT threads are never hidden by
  *  this cap — WORKING threads fill whatever room is left. */
@@ -49,6 +52,22 @@ fun statusColor(status: ThreadStatus): Color = when (status) {
     ThreadStatus.NEEDS_INPUT -> AMBER
     ThreadStatus.WORKING -> BLUE
     else -> GREY
+}
+
+/** Color the per-thread TX meter by pressure: red at the HARD tier (or very high
+ *  context), amber as it climbs, green when there's headroom. Glanceable hygiene. */
+fun meterColor(tier: String?, tokens: Int?): Color = when {
+    tier?.equals("HARD", ignoreCase = true) == true -> RED
+    (tokens ?: 0) >= 400_000 -> AMBER
+    else -> GREEN
+}
+
+/** Compact meter string like "532k · $29.08"; null when no meter data is present. */
+fun meterLabel(tokens: Int?, cost: Double?): String? {
+    val parts = mutableListOf<String>()
+    tokens?.let { parts += "${it / 1000}k" }
+    cost?.let { parts += String.format("$%.2f", it) }
+    return if (parts.isEmpty()) null else parts.joinToString(" · ")
 }
 
 /** Every thread, ordered actionable-first: NEEDS_INPUT, then WORKING, then IDLE. */
@@ -193,9 +212,24 @@ private fun ThreadChip(thread: ThreadDto, onClick: () -> Unit) {
     val dotColor = if (thread.hasPrompt) GREEN else statusColor(thread.statusEnum)
     val sub = if (thread.hasPrompt) "tap to answer"
         else thread.statusEnum.name.replace('_', ' ').lowercase()
+    val meter = meterLabel(thread.ctxTokens, thread.costUsd)
     Chip(
         label = { Text(label, maxLines = 2) },
-        secondaryLabel = { Text(sub) },
+        secondaryLabel = {
+            Column {
+                Text(sub, maxLines = 1)
+                // Per-thread TX meter: context tokens + cost, colored by pressure so a
+                // runaway (HARD/high-$) session is obvious at a glance. Below, not aside.
+                if (meter != null) {
+                    Text(
+                        text = meter,
+                        color = meterColor(thread.ctxTier, thread.ctxTokens),
+                        fontSize = 11.sp,
+                        maxLines = 1,
+                    )
+                }
+            }
+        },
         icon = { Dot(dotColor) },
         onClick = onClick,
         colors = ChipDefaults.secondaryChipColors(),

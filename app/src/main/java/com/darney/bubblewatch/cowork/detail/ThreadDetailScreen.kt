@@ -7,7 +7,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
@@ -30,6 +32,8 @@ import androidx.wear.compose.material.Scaffold
 import androidx.wear.compose.material.Text
 import androidx.wear.compose.material.TimeText
 import com.darney.bubblewatch.cowork.input.rememberVoiceInput
+import com.darney.bubblewatch.cowork.threads.meterColor
+import com.darney.bubblewatch.cowork.threads.meterLabel
 import com.darney.bubblewatch.cowork.threads.statusColor
 import com.darney.bubblewatch.ui.rotaryScroll
 import kotlinx.coroutines.delay
@@ -54,13 +58,26 @@ fun ThreadDetailScreen(
     LaunchedEffect(Unit) { focusRequester.requestFocus() }
     val clipboard = LocalClipboardManager.current
 
-    // Keep the tail pinned to the newest line as it grows — but only if the user
-    // is already near the bottom, so scrolling up to read isn't yanked away.
+    // Transient "copied" acknowledgement so the Copy tap is visibly confirmed.
+    var copied by remember { mutableStateOf(false) }
+    LaunchedEffect(copied) { if (copied) { delay(1200); copied = false } }
+
+    // On first entry, land at the TOP of the tail (natural reading order) rather
+    // than auto-scrolling to the options at the bottom. After that first landing,
+    // follow new lines as they arrive — but only if the user is already near the
+    // bottom, so scrolling up to read isn't yanked away.
     // NOTE: deliberately NOT keyed on suggestions — populating them must not scroll.
+    var landedAtTop by remember(index) { mutableStateOf(false) }
     LaunchedEffect(state.lines.size, state.prompt) {
+        if (state.lines.isEmpty()) return@LaunchedEffect
+        if (!landedAtTop) {
+            landedAtTop = true
+            listState.scrollToItem(0)
+            return@LaunchedEffect
+        }
         val info = listState.layoutInfo
         val total = info.totalItemsCount
-        val atBottom = info.visibleItemsInfo.lastOrNull()?.index?.let { it >= total - 2 } ?: true
+        val atBottom = info.visibleItemsInfo.lastOrNull()?.index?.let { it >= total - 2 } ?: false
         if (atBottom && total > 0) {
             delay(50)
             listState.scrollToItem((listState.layoutInfo.totalItemsCount - 1).coerceAtLeast(0))
@@ -86,6 +103,20 @@ fun ThreadDetailScreen(
                         color = statusColor(state.status),
                         textAlign = TextAlign.Center,
                         maxLines = 2,
+                    )
+                }
+            }
+
+            // Per-thread TX meter under the title: context tokens + cost + tier,
+            // colored by pressure so a HARD/high-$ session is obvious on entry.
+            meterLabel(state.ctxTokens, state.costUsd)?.let { m ->
+                item(key = "meter") {
+                    Text(
+                        text = m + (state.ctxTier?.let { " · $it" } ?: ""),
+                        color = meterColor(state.ctxTier, state.ctxTokens),
+                        fontSize = 11.sp,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth(),
                     )
                 }
             }
@@ -216,8 +247,7 @@ fun ThreadDetailScreen(
                 )
             }
 
-            // Soft keys: allowlisted terminal control for one-tap autonomy. Two rows
-            // of two so labels stay readable on a round display; Copy pairs with Clr.
+            // Terminal controls — act on the remote pane (these already work).
             item(key = "softkeys1") {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -237,22 +267,36 @@ fun ThreadDetailScreen(
                     )
                 }
             }
-            item(key = "softkeys2") {
+            // Draft / clipboard tools — act on the LOCAL draft, not the terminal.
+            // Copy: tail → watch clipboard (with ✓ feedback). Paste: clipboard →
+            // draft (no keyboard needed). Clr: empty the draft (what you actually
+            // want when composing — not a remote line-clear).
+            item(key = "drafttools") {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    // Copy the current tail to the watch clipboard; paste it back
-                    // into a reply via the system keyboard inside ✎ Add.
                     CompactChip(
-                        onClick = { clipboard.setText(AnnotatedString(state.lines.joinToString("\n"))) },
-                        label = { Text("📋 Copy") },
+                        onClick = {
+                            clipboard.setText(AnnotatedString(state.lines.joinToString("\n")))
+                            copied = true
+                        },
+                        label = { Text(if (copied) "✓ Copied" else "📋 Copy", maxLines = 1) },
                         colors = ChipDefaults.secondaryChipColors(),
                         modifier = Modifier.weight(1f),
                     )
                     CompactChip(
-                        onClick = { vm.sendKey("clear") },
-                        label = { Text("Clr") },
+                        onClick = {
+                            clipboard.getText()?.text?.takeIf { it.isNotBlank() }
+                                ?.let { vm.appendToDraft(it) }
+                        },
+                        label = { Text("📥 Paste", maxLines = 1) },
+                        colors = ChipDefaults.secondaryChipColors(),
+                        modifier = Modifier.weight(1f),
+                    )
+                    CompactChip(
+                        onClick = { vm.clearDraft() },
+                        label = { Text("✖ Clr", maxLines = 1) },
                         colors = ChipDefaults.secondaryChipColors(),
                         modifier = Modifier.weight(1f),
                     )

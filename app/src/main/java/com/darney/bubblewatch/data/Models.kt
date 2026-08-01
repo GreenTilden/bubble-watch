@@ -13,6 +13,11 @@ data class ThreadDto(
     val title: String,
     val label: String,
     val hasPrompt: Boolean = false,
+    // Claude Code status-bar meter (per pane); null when the status line was not visible.
+    val model: String? = null,
+    val ctxTokens: Int? = null,
+    val ctxTier: String? = null,
+    val costUsd: Double? = null,
 ) {
     val statusEnum: ThreadStatus
         get() = when (status) {

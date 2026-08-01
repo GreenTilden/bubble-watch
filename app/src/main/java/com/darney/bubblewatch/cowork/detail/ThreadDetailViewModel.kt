@@ -26,6 +26,12 @@ data class ThreadDetailUiState(
     // and when a new prompt / needs-input transition appears), not every tick.
     val suggestions: List<String> = emptyList(),
     val suggestionsLoading: Boolean = false,
+    // Per-thread TX meter, carried from the thread list metadata (retains last
+    // known values when a poll misses the status line).
+    val model: String? = null,
+    val ctxTokens: Int? = null,
+    val ctxTier: String? = null,
+    val costUsd: Double? = null,
 )
 
 class ThreadDetailViewModel(app: Application) : AndroidViewModel(app) {
@@ -92,6 +98,11 @@ class ThreadDetailViewModel(app: Application) : AndroidViewModel(app) {
                 // Keep the SAME instances when unchanged so their items don't recompose.
                 lines = if (linesChanged) tail.lines else cur.lines,
                 prompt = if (promptChanged) tail.prompt else cur.prompt,
+                // Meter from list metadata; keep last known when a poll misses it.
+                model = meta?.model ?: cur.model,
+                ctxTokens = meta?.ctxTokens ?: cur.ctxTokens,
+                ctxTier = meta?.ctxTier ?: cur.ctxTier,
+                costUsd = meta?.costUsd ?: cur.costUsd,
                 error = null,
             )
         } catch (e: Exception) {
