@@ -19,7 +19,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
@@ -28,6 +30,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.wear.compose.foundation.lazy.ScalingLazyColumn
+import androidx.wear.compose.foundation.lazy.ScalingLazyColumnDefaults
 import androidx.wear.compose.foundation.lazy.rememberScalingLazyListState
 import androidx.wear.compose.material.Chip
 import androidx.wear.compose.material.ChipDefaults
@@ -84,6 +87,7 @@ fun ThreadDetailScreen(
     val focusRequester = remember { FocusRequester() }
     LaunchedEffect(Unit) { focusRequester.requestFocus() }
     val clipboard = LocalClipboardManager.current
+    val haptics = LocalHapticFeedback.current
 
     // Transient "copied" acknowledgement so the Copy tap is visibly confirmed.
     var copied by remember { mutableStateOf(false) }
@@ -93,7 +97,7 @@ fun ThreadDetailScreen(
     // ARMS it (label flips to "Confirm?"); a second tap within a few seconds fires.
     // Auto-disarms so a stray tap can't leave it primed forever.
     var bathArmed by remember { mutableStateOf(false) }
-    LaunchedEffect(bathArmed) { if (bathArmed) { delay(4000); bathArmed = false } }
+    LaunchedEffect(bathArmed) { if (bathArmed) { delay(6000); bathArmed = false } }
 
     // On first entry, land at the TOP of the tail (natural reading order) rather
     // than auto-scrolling to the options at the bottom. After that first landing,
@@ -129,6 +133,13 @@ fun ThreadDetailScreen(
             state = listState,
             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 24.dp),
             modifier = Modifier.rotaryScroll(listState, focusRequester),
+            // Flatter edge scale/fade so the tail scrolls like a regular list rather
+            // than each line "breathing" as it nears the rim — reads smoother + more
+            // even, while keeping the Wear focus feel. (Tail readability pass.)
+            scalingParams = ScalingLazyColumnDefaults.scalingParams(
+                edgeScale = 0.85f,
+                edgeAlpha = 0.7f,
+            ),
         ) {
             item {
                 ListHeader {
@@ -164,7 +175,8 @@ fun ThreadDetailScreen(
                     Text(
                         text = line.ifBlank { " " },
                         fontFamily = FontFamily.Monospace,
-                        fontSize = 11.sp,
+                        fontSize = 9.sp,
+                        lineHeight = 11.sp,
                         maxLines = 3,
                         modifier = Modifier.fillMaxWidth(),
                     )
@@ -357,13 +369,19 @@ fun ThreadDetailScreen(
                         onClick = {
                             if (state.bathStage != null) return@CompactChip
                             if (bathArmed) {
+                                // Confirm tap: fire, with a firmer haptic so it's
+                                // unmistakable the destructive macro actually started.
                                 bathArmed = false
+                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                                 vm.contextBath()
                             } else {
+                                // Arm tap: a light tick so you feel it caught (and know
+                                // to tap again) instead of wondering if it registered.
                                 bathArmed = true
+                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                             }
                         },
-                        label = { Text(if (bathArmed) "🛁 Confirm?" else "🛁 Bath", maxLines = 1) },
+                        label = { Text(if (bathArmed) "🛁 Tap again" else "🛁 Bath", maxLines = 1) },
                         colors = if (bathArmed) ChipDefaults.primaryChipColors() else ChipDefaults.secondaryChipColors(),
                         modifier = Modifier.weight(1f),
                     )

@@ -197,7 +197,16 @@ class ThreadDetailViewModel(app: Application) : AndroidViewModel(app) {
                     _state.value = _state.value.copy(bathStage = null)
                 }
             } catch (e: Exception) {
-                _state.value = _state.value.copy(bathStage = null, error = e.message ?: "context bath failed")
+                // Surface the failure AT the bath indicator — the user is watching the
+                // button, not the error banner up by the title — then clear it.
+                _state.value = _state.value.copy(
+                    bathStage = "⚠ bath failed",
+                    error = e.message ?: "context bath failed",
+                )
+                delay(2500)
+                if (_state.value.bathStage == "⚠ bath failed") {
+                    _state.value = _state.value.copy(bathStage = null)
+                }
             }
         }
     }
