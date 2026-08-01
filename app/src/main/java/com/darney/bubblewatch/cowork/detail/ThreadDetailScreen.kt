@@ -167,6 +167,18 @@ fun ThreadDetailScreen(
                 }
             }
 
+            // 💡 button — suggestions are NEVER fetched automatically (saves the
+            // Haiku call). Tap to pull them; tap again to re-fetch. Results render
+            // in the full-width stacked chips below.
+            item(key = "sugbtn") {
+                CompactChip(
+                    onClick = { vm.requestSuggestions() },
+                    label = { Text(if (state.suggestionsLoading) "💡 …" else "💡 Ideas", maxLines = 1) },
+                    colors = ChipDefaults.secondaryChipColors(),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+
             // Generated momentum suggestions — FULL-WIDTH STACKED (never beside the
             // tail): each can be up to ~60 chars, so a horizontal row would clip.
             // Tap stages into the draft; "Send draft" fires. Loading shows a hint

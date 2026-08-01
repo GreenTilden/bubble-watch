@@ -49,15 +49,11 @@ class ThreadDetailViewModel(app: Application) : AndroidViewModel(app) {
         _state.value = ThreadDetailUiState(index = index)
         pollJob?.cancel()
         pollJob = viewModelScope.launch {
-            var first = true
             while (true) {
                 refreshOnce(index)
-                // Fetch suggestions once on entry; refreshOnce handles the rest
-                // (new prompt / needs-input transitions) as they occur.
-                if (first) {
-                    first = false
-                    fetchSuggestions(index)
-                }
+                // Suggestions are NEVER fetched automatically — they cost a Haiku
+                // call, so they only happen when the user taps the 💡 button
+                // (see requestSuggestions()).
                 // Working threads stream — poll moderately. Threads sitting at a
                 // question or idle are stable, so poll lazily to avoid churn.
                 val fast = _state.value.status == ThreadStatus.WORKING
@@ -76,15 +72,8 @@ class ThreadDetailViewModel(app: Application) : AndroidViewModel(app) {
             val newTitle = meta?.label?.ifBlank { meta.title } ?: cur.title
             val linesChanged = tail.lines != cur.lines
             val promptChanged = tail.prompt != cur.prompt
-            // Refresh suggestions when a new interactive prompt appears, or when the
-            // thread newly flips into NEEDS_INPUT (covers freetext questions with no
-            // parsed menu). Guarded downstream so it never stacks calls.
-            val promptAppeared = promptChanged && tail.prompt != null
-            val enteredNeedsInput =
-                newStatus == ThreadStatus.NEEDS_INPUT && cur.status != ThreadStatus.NEEDS_INPUT
-            if (promptAppeared || enteredNeedsInput) {
-                fetchSuggestions(index)
-            }
+            // Suggestions are no longer auto-fetched on prompt / needs-input
+            // transitions — the user pulls them on demand via 💡 (requestSuggestions).
             // Nothing moved — emit nothing at all, so there's zero recomposition
             // for a thread parked at a question or idle. This is the calm case.
             if (!linesChanged && !promptChanged &&
@@ -108,6 +97,14 @@ class ThreadDetailViewModel(app: Application) : AndroidViewModel(app) {
         } catch (e: Exception) {
             _state.value = _state.value.copy(error = e.message ?: "request failed")
         }
+    }
+
+    /** User-initiated suggestion fetch (the 💡 button). No Haiku call happens
+     *  until this is tapped. Re-tapping re-fetches (guarded against stacking). */
+    fun requestSuggestions() {
+        val index = _state.value.index
+        if (index < 0) return
+        fetchSuggestions(index)
     }
 
     /** Fetch momentum suggestions for [index]. Off the poll path, guarded against
