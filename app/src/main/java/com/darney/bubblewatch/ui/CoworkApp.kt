@@ -37,7 +37,12 @@ fun CoworkApp() {
                 arguments = listOf(navArgument("index") { type = NavType.IntType }),
             ) { entry ->
                 val index = entry.arguments?.getInt("index") ?: return@composable
-                ThreadDetailScreen(index = index)
+                ThreadDetailScreen(
+                    index = index,
+                    // After a reply/menu-answer lands, drop back to the thread list
+                    // (which scrolls itself to the top on resume) for the next glance.
+                    onDone = { nav.popBackStack(Routes.THREADS, inclusive = false) },
+                )
             }
             composable(Routes.IDLE) {
                 IdleScreen(

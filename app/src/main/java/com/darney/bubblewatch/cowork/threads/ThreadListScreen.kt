@@ -11,6 +11,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -19,6 +20,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.wear.compose.foundation.lazy.ScalingLazyColumn
@@ -34,6 +36,7 @@ import androidx.wear.compose.material.TimeText
 import androidx.wear.compose.material.Vignette
 import androidx.wear.compose.material.VignettePosition
 import com.darney.bubblewatch.data.ThreadDto
+import kotlinx.coroutines.launch
 import com.darney.bubblewatch.data.ThreadStatus
 import com.darney.bubblewatch.ui.rotaryScroll
 import kotlinx.coroutines.delay
@@ -108,6 +111,14 @@ fun ThreadListScreen(
     val state by vm.state.collectAsStateWithLifecycle()
     val listState = rememberScalingLazyListState()
     val focusRequester = remember { FocusRequester() }
+    val scope = rememberCoroutineScope()
+
+    // Land at the top whenever the list becomes current again — e.g. after a reply
+    // auto-returns from a thread — so the most actionable items are the first glance.
+    LifecycleResumeEffect(Unit) {
+        scope.launch { listState.scrollToItem(0) }
+        onPauseOrDispose { }
+    }
 
     // Light foreground poll so status (NEEDS_INPUT/WORKING) stays fresh while visible.
     LaunchedEffect(Unit) {

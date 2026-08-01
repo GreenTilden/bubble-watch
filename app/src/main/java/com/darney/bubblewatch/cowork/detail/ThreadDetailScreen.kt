@@ -1,8 +1,11 @@
 package com.darney.bubblewatch.cowork.detail
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -10,6 +13,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
@@ -35,6 +39,8 @@ import com.darney.bubblewatch.cowork.input.rememberVoiceInput
 import com.darney.bubblewatch.cowork.threads.meterColor
 import com.darney.bubblewatch.cowork.threads.meterLabel
 import com.darney.bubblewatch.cowork.threads.statusColor
+import com.darney.bubblewatch.ui.KeeperIndicator
+import com.darney.bubblewatch.ui.KeeperMode
 import com.darney.bubblewatch.ui.rotaryScroll
 import kotlinx.coroutines.delay
 
@@ -49,9 +55,27 @@ private val STATIC_REPLIES = listOf("continue", "go ahead", "explain")
 fun ThreadDetailScreen(
     index: Int,
     vm: ThreadDetailViewModel = viewModel(),
+    onDone: () -> Unit = {},
 ) {
     LaunchedEffect(index) { vm.start(index) }
     val state by vm.state.collectAsStateWithLifecycle()
+
+    // Post-send confirm: when a reply / menu-answer finishes (sending true → false,
+    // no error), play the foreman for a beat, then auto-return to the thread list —
+    // the "answer and glance back at the overview" loop. Guarded so it never fires
+    // on a failed send or on the 🛁 / soft-key paths (those don't touch `sending`).
+    var showConfirm by remember { mutableStateOf(false) }
+    var wasSending by remember { mutableStateOf(false) }
+    LaunchedEffect(state.sending) {
+        val prev = wasSending
+        wasSending = state.sending
+        if (prev && !state.sending && state.error == null) {
+            showConfirm = true
+            delay(1100)
+            showConfirm = false
+            onDone()
+        }
+    }
 
     val listState = rememberScalingLazyListState()
     val focusRequester = remember { FocusRequester() }
@@ -97,6 +121,7 @@ fun ThreadDetailScreen(
         timeText = { TimeText() },
         positionIndicator = { PositionIndicator(scalingLazyListState = listState) },
     ) {
+      Box(modifier = Modifier.fillMaxSize()) {
         ScalingLazyColumn(
             state = listState,
             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 24.dp),
@@ -191,13 +216,7 @@ fun ThreadDetailScreen(
             // only while we have nothing yet, so it can't flicker over live chips.
             if (state.suggestionsLoading && state.suggestions.isEmpty()) {
                 item(key = "sugloading") {
-                    Text(
-                        text = "💡 …",
-                        color = AMBER,
-                        fontSize = 12.sp,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
+                    KeeperIndicator(label = "💡 thinking…", mode = KeeperMode.THINKING)
                 }
             }
             state.suggestions.forEachIndexed { i, s ->
@@ -272,13 +291,8 @@ fun ThreadDetailScreen(
             // bath is running (bathStage != null).
             state.bathStage?.let { stage ->
                 item(key = "bathstage") {
-                    Text(
-                        text = stage,
-                        color = AMBER,
-                        fontSize = 13.sp,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
+                    // The keeper takes an actual bath while the macro runs its stages.
+                    KeeperIndicator(label = stage, mode = KeeperMode.BATH)
                 }
             }
 
@@ -349,5 +363,19 @@ fun ThreadDetailScreen(
                 }
             }
         }
+
+        // Post-send confirm overlay — the foreman "lands" the reply for a beat
+        // before the screen auto-returns to the thread list (see onDone above).
+        if (showConfirm) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color(0xE6000000)),
+                contentAlignment = Alignment.Center,
+            ) {
+                KeeperIndicator(label = "sent ✓", mode = KeeperMode.CALM)
+            }
+        }
+      }
     }
 }
