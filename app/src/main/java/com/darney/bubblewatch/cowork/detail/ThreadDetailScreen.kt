@@ -185,7 +185,9 @@ fun ThreadDetailScreen(
             state.suggestions.forEachIndexed { i, s ->
                 item(key = "sug$i") {
                     Chip(
-                        label = { Text("💡 $s", maxLines = 2) },
+                        // Smaller font + 3 lines so wordier, more specific suggestions
+                        // read comfortably without clipping.
+                        label = { Text("💡 $s", fontSize = 12.sp, maxLines = 3) },
                         onClick = { vm.appendToDraft(s) },
                         colors = ChipDefaults.primaryChipColors(),
                         modifier = Modifier.fillMaxWidth(),
