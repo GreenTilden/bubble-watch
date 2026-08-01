@@ -18,6 +18,10 @@
             android:name="com.google.android.wearable"
             android:required="false" />
 
+        <meta-data
+            android:name="com.google.android.wearable.standalone"
+            android:value="true" />
+
         <activity
             android:name=".BubbleActivity"
             android:exported="true"
