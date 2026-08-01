@@ -21,4 +21,7 @@ interface BridgeApi {
 
     @POST
     suspend fun sendKey(@Url url: String, @Body body: KeyRequest): SendResponse
+
+    @POST
+    suspend fun suggest(@Url url: String): SuggestResponseDto
 }

@@ -22,6 +22,10 @@ data class ThreadDetailUiState(
     val draft: String = "",
     val sending: Boolean = false,
     val error: String? = null,
+    // Momentum suggestions from the bridge. Fetched off the poll path (on entry
+    // and when a new prompt / needs-input transition appears), not every tick.
+    val suggestions: List<String> = emptyList(),
+    val suggestionsLoading: Boolean = false,
 )
 
 class ThreadDetailViewModel(app: Application) : AndroidViewModel(app) {
@@ -31,6 +35,7 @@ class ThreadDetailViewModel(app: Application) : AndroidViewModel(app) {
     val state: StateFlow<ThreadDetailUiState> = _state.asStateFlow()
 
     private var pollJob: Job? = null
+    private var suggestJob: Job? = null
 
     /** Begin polling tail + status for [index]. Safe to call repeatedly. */
     fun start(index: Int) {
@@ -38,8 +43,15 @@ class ThreadDetailViewModel(app: Application) : AndroidViewModel(app) {
         _state.value = ThreadDetailUiState(index = index)
         pollJob?.cancel()
         pollJob = viewModelScope.launch {
+            var first = true
             while (true) {
                 refreshOnce(index)
+                // Fetch suggestions once on entry; refreshOnce handles the rest
+                // (new prompt / needs-input transitions) as they occur.
+                if (first) {
+                    first = false
+                    fetchSuggestions(index)
+                }
                 // Working threads stream — poll moderately. Threads sitting at a
                 // question or idle are stable, so poll lazily to avoid churn.
                 val fast = _state.value.status == ThreadStatus.WORKING
@@ -58,6 +70,15 @@ class ThreadDetailViewModel(app: Application) : AndroidViewModel(app) {
             val newTitle = meta?.label?.ifBlank { meta.title } ?: cur.title
             val linesChanged = tail.lines != cur.lines
             val promptChanged = tail.prompt != cur.prompt
+            // Refresh suggestions when a new interactive prompt appears, or when the
+            // thread newly flips into NEEDS_INPUT (covers freetext questions with no
+            // parsed menu). Guarded downstream so it never stacks calls.
+            val promptAppeared = promptChanged && tail.prompt != null
+            val enteredNeedsInput =
+                newStatus == ThreadStatus.NEEDS_INPUT && cur.status != ThreadStatus.NEEDS_INPUT
+            if (promptAppeared || enteredNeedsInput) {
+                fetchSuggestions(index)
+            }
             // Nothing moved — emit nothing at all, so there's zero recomposition
             // for a thread parked at a question or idle. This is the calm case.
             if (!linesChanged && !promptChanged &&
@@ -78,6 +99,20 @@ class ThreadDetailViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Fetch momentum suggestions for [index]. Off the poll path, guarded against
+     *  stacking, never throws (repo swallows to []), emits only on change. */
+    private fun fetchSuggestions(index: Int) {
+        if (suggestJob?.isActive == true) return
+        suggestJob = viewModelScope.launch {
+            _state.value = _state.value.copy(suggestionsLoading = true)
+            val sug = repo.suggest(index)
+            val cur = _state.value
+            if (sug != cur.suggestions || cur.suggestionsLoading) {
+                _state.value = cur.copy(suggestions = sug, suggestionsLoading = false)
+            }
+        }
+    }
+
     /** Tap an interactive option: send its digit as a single keypress (no Enter —
      *  Claude Code menus select on the number key). */
     fun selectOption(key: String) {
@@ -87,7 +122,7 @@ class ThreadDetailViewModel(app: Application) : AndroidViewModel(app) {
             _state.value = _state.value.copy(sending = true)
             try {
                 repo.send(index, key, submit = false)
-                _state.value = _state.value.copy(sending = false, error = null)
+                _state.value = _state.value.copy(sending = false, error = null, suggestions = emptyList())
                 refreshOnce(index)
             } catch (e: Exception) {
                 _state.value = _state.value.copy(sending = false, error = e.message ?: "send failed")
@@ -137,7 +172,8 @@ class ThreadDetailViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 repo.send(index, text, submit)
                 onOk()
-                _state.value = _state.value.copy(sending = false, error = null)
+                // Suggestions were for the pre-send screen; drop them so nothing stale lingers.
+                _state.value = _state.value.copy(sending = false, error = null, suggestions = emptyList())
                 refreshOnce(index)
             } catch (e: Exception) {
                 _state.value = _state.value.copy(sending = false, error = e.message ?: "send failed")

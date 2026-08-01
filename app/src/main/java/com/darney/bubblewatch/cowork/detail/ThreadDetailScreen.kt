@@ -11,6 +11,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -34,6 +36,11 @@ import kotlinx.coroutines.delay
 
 private val AMBER = Color(0xFFFFB300)
 
+// Always-present momentum replies (the hybrid safety net if the LLM call is slow
+// or fails). Short + fixed so they fit a 3-across row without clipping. Each is
+// staged into the draft, then fired by "Send draft".
+private val STATIC_REPLIES = listOf("continue", "go ahead", "explain")
+
 @Composable
 fun ThreadDetailScreen(
     index: Int,
@@ -45,9 +52,11 @@ fun ThreadDetailScreen(
     val listState = rememberScalingLazyListState()
     val focusRequester = remember { FocusRequester() }
     LaunchedEffect(Unit) { focusRequester.requestFocus() }
+    val clipboard = LocalClipboardManager.current
 
     // Keep the tail pinned to the newest line as it grows — but only if the user
     // is already near the bottom, so scrolling up to read isn't yanked away.
+    // NOTE: deliberately NOT keyed on suggestions — populating them must not scroll.
     LaunchedEffect(state.lines.size, state.prompt) {
         val info = listState.layoutInfo
         val total = info.totalItemsCount
@@ -98,7 +107,9 @@ fun ThreadDetailScreen(
             }
 
             // Interactive prompt: tappable option chips, pinned near the bottom
-            // so the auto-scroll lands on them.
+            // so the auto-scroll lands on them. This stays the PRIMARY menu path —
+            // Claude Code menus select on a digit keypress, so freetext staging
+            // can't reliably answer a menu (and mustn't clobber stacked questions).
             state.prompt?.let { prompt ->
                 item(key = "q") {
                     Text(
@@ -120,6 +131,50 @@ fun ThreadDetailScreen(
                                 ChipDefaults.secondaryChipColors()
                             },
                             modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                }
+            }
+
+            // Generated momentum suggestions — FULL-WIDTH STACKED (never beside the
+            // tail): each can be up to ~60 chars, so a horizontal row would clip.
+            // Tap stages into the draft; "Send draft" fires. Loading shows a hint
+            // only while we have nothing yet, so it can't flicker over live chips.
+            if (state.suggestionsLoading && state.suggestions.isEmpty()) {
+                item(key = "sugloading") {
+                    Text(
+                        text = "💡 …",
+                        color = AMBER,
+                        fontSize = 12.sp,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
+            state.suggestions.forEachIndexed { i, s ->
+                item(key = "sug$i") {
+                    Chip(
+                        label = { Text("💡 $s", maxLines = 2) },
+                        onClick = { vm.appendToDraft(s) },
+                        colors = ChipDefaults.primaryChipColors(),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
+
+            // Static quick-reply row — always present (hybrid safety net). Short
+            // fixed phrases, so a 3-across CompactChip row fits without clipping.
+            item(key = "staticreplies") {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    STATIC_REPLIES.forEach { phrase ->
+                        CompactChip(
+                            onClick = { vm.appendToDraft(phrase) },
+                            label = { Text(phrase, maxLines = 1) },
+                            colors = ChipDefaults.secondaryChipColors(),
+                            modifier = Modifier.weight(1f),
                         )
                     }
                 }
@@ -161,8 +216,9 @@ fun ThreadDetailScreen(
                 )
             }
 
-            // Soft keys: allowlisted terminal control for one-tap autonomy.
-            item(key = "softkeys") {
+            // Soft keys: allowlisted terminal control for one-tap autonomy. Two rows
+            // of two so labels stay readable on a round display; Copy pairs with Clr.
+            item(key = "softkeys1") {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -176,6 +232,21 @@ fun ThreadDetailScreen(
                     CompactChip(
                         onClick = { vm.sendKey("interrupt") },
                         label = { Text("⏹") },
+                        colors = ChipDefaults.secondaryChipColors(),
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
+            item(key = "softkeys2") {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    // Copy the current tail to the watch clipboard; paste it back
+                    // into a reply via the system keyboard inside ✎ Add.
+                    CompactChip(
+                        onClick = { clipboard.setText(AnnotatedString(state.lines.joinToString("\n"))) },
+                        label = { Text("📋 Copy") },
                         colors = ChipDefaults.secondaryChipColors(),
                         modifier = Modifier.weight(1f),
                     )

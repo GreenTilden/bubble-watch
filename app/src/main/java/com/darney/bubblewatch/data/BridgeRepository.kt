@@ -64,6 +64,11 @@ class BridgeRepository private constructor(context: Context) {
     suspend fun sendKey(index: Int, action: String): SendResponse =
         api.sendKey("${base()}/api/threads/$index/key", KeyRequest(action))
 
+    /** Momentum suggestions. Swallows any failure to [] so the VM never error-handles them. */
+    suspend fun suggest(index: Int): List<String> =
+        runCatching { api.suggest("${base()}/api/threads/$index/suggest").suggestions }
+            .getOrDefault(emptyList())
+
     companion object {
         @Volatile
         private var instance: BridgeRepository? = null
