@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Main water droplet (pointed top, round bottom) -->
+    <path
+        android:pathData="M54,33 C63,50 68,58 68,66 a14,14 0 1,1 -28,0 C40,58 45,50 54,33 Z"
+        android:fillColor="#FFEAF6FF" />
+
+    <!-- Shine highlight on the droplet -->
+    <path
+        android:pathData="M48,62 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0 Z"
+        android:fillColor="#FFFFFFFF"
+        android:fillAlpha="0.9" />
+
+    <!-- Small soap bubble upper-right -->
+    <path
+        android:pathData="M73,40 a6,6 0 1,0 12,0 a6,6 0 1,0 -12,0 Z"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="2.5"
+        android:strokeAlpha="0.85"
+        android:fillColor="#FFFFFFFF"
+        android:fillAlpha="0.12" />
+
+    <!-- Tiny bubble upper-left -->
+    <path
+        android:pathData="M28,48 a3.5,3.5 0 1,0 7,0 a3.5,3.5 0 1,0 -7,0 Z"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="2"
+        android:strokeAlpha="0.8"
+        android:fillColor="#FFFFFFFF"
+        android:fillAlpha="0.10" />
+</vector>
