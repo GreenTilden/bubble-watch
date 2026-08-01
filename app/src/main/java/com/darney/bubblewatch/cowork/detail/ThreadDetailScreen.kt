@@ -19,9 +19,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
@@ -44,10 +42,14 @@ import com.darney.bubblewatch.cowork.input.rememberVoiceInput
 import com.darney.bubblewatch.cowork.threads.meterColor
 import com.darney.bubblewatch.cowork.threads.meterLabel
 import com.darney.bubblewatch.cowork.threads.statusColor
+import com.darney.bubblewatch.data.ThreadStatus
 import com.darney.bubblewatch.ui.KeeperIndicator
 import com.darney.bubblewatch.ui.KeeperMode
 import com.darney.bubblewatch.ui.SentCheck
+import com.darney.bubblewatch.ui.confirm
+import com.darney.bubblewatch.ui.rememberVibrator
 import com.darney.bubblewatch.ui.rotaryScroll
+import com.darney.bubblewatch.ui.tick
 import kotlinx.coroutines.delay
 
 private val AMBER = Color(0xFFFFB300)
@@ -87,7 +89,7 @@ fun ThreadDetailScreen(
     val focusRequester = remember { FocusRequester() }
     LaunchedEffect(Unit) { focusRequester.requestFocus() }
     val clipboard = LocalClipboardManager.current
-    val haptics = LocalHapticFeedback.current
+    val vibrator = rememberVibrator()
 
     // Transient "copied" acknowledgement so the Copy tap is visibly confirmed.
     var copied by remember { mutableStateOf(false) }
@@ -168,6 +170,14 @@ fun ThreadDetailScreen(
 
             state.error?.let { err ->
                 item { Text("⚠ $err", color = AMBER) }
+            }
+
+            // While Claude Code is actively generating, pin the mark + bouncing yellow
+            // sparkline at the top of the tail — the "it's thinking" tell.
+            if (state.status == ThreadStatus.WORKING) {
+                item(key = "working") {
+                    KeeperIndicator(label = "working…", mode = KeeperMode.THINKING)
+                }
             }
 
             state.lines.forEachIndexed { i, line ->
@@ -305,15 +315,8 @@ fun ThreadDetailScreen(
                 )
             }
 
-            // 🛁 context-bath live checkpoint — a simple stage line the user can
-            // watch step through COPY → CLEAR → PASTE → GO → ✓. Only shown while a
-            // bath is running (bathStage != null).
-            state.bathStage?.let { stage ->
-                item(key = "bathstage") {
-                    // The keeper takes an actual bath while the macro runs its stages.
-                    KeeperIndicator(label = stage, mode = KeeperMode.BATH)
-                }
-            }
+            // 🛁 context-bath renders as a centered overlay (see below), not an inline
+            // list item — so the tub plays front-and-center instead of scrolling off.
 
             // Terminal controls — act on the remote pane (these already work).
             item(key = "softkeys1") {
@@ -372,13 +375,13 @@ fun ThreadDetailScreen(
                                 // Confirm tap: fire, with a firmer haptic so it's
                                 // unmistakable the destructive macro actually started.
                                 bathArmed = false
-                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                vibrator.confirm()
                                 vm.contextBath()
                             } else {
                                 // Arm tap: a light tick so you feel it caught (and know
                                 // to tap again) instead of wondering if it registered.
                                 bathArmed = true
-                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                vibrator.tick()
                             }
                         },
                         label = { Text(if (bathArmed) "🛁 Tap again" else "🛁 Bath", maxLines = 1) },
@@ -407,6 +410,19 @@ fun ThreadDetailScreen(
                         modifier = Modifier.padding(top = 4.dp),
                     )
                 }
+            }
+        }
+
+        // 🛁 context-bath overlay — front-and-center like the demo: the tub + rising
+        // bubbles, with the live stage caption cycling COPY → CLEAR → PASTE → GO → ✓.
+        state.bathStage?.let { stage ->
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color(0xE6000000)),
+                contentAlignment = Alignment.Center,
+            ) {
+                KeeperIndicator(label = stage, mode = KeeperMode.BATH)
             }
         }
       }

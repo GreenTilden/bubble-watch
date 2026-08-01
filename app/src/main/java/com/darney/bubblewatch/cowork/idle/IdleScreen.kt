@@ -4,8 +4,8 @@ import android.app.Application
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.platform.LocalHapticFeedback
+import com.darney.bubblewatch.ui.confirm
+import com.darney.bubblewatch.ui.rememberVibrator
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
@@ -75,11 +75,11 @@ fun IdleScreen(
     vm: IdleViewModel = viewModel(),
 ) {
     val newAttention by vm.newAttention.collectAsStateWithLifecycle()
-    val haptics = LocalHapticFeedback.current
+    val vibrator = rememberVibrator()
 
     LaunchedEffect(newAttention) {
         if (newAttention) {
-            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+            vibrator.confirm()
             onNeedsAttention()
         }
     }
