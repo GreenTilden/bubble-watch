@@ -35,9 +35,11 @@ import androidx.wear.compose.material.Text
 import androidx.wear.compose.material.TimeText
 import androidx.wear.compose.material.Vignette
 import androidx.wear.compose.material.VignettePosition
+import com.darney.bubblewatch.AmbientState
 import com.darney.bubblewatch.data.ThreadDto
-import kotlinx.coroutines.launch
 import com.darney.bubblewatch.data.ThreadStatus
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import com.darney.bubblewatch.ui.rotaryScroll
 import kotlinx.coroutines.delay
 
@@ -124,8 +126,9 @@ fun ThreadListScreen(
     LaunchedEffect(Unit) {
         focusRequester.requestFocus()
         while (true) {
+            AmbientState.isAmbient.first { !it } // pause while screen is asleep
             vm.refresh()
-            delay(10000)
+            delay(15000)
         }
     }
 

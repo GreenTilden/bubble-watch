@@ -10,11 +10,13 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.darney.bubblewatch.AmbientState
 import com.darney.bubblewatch.BubbleScreen
 import com.darney.bubblewatch.data.BridgeRepository
 import com.darney.bubblewatch.data.ThreadStatus
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -31,7 +33,12 @@ class IdleViewModel(app: Application) : AndroidViewModel(app) {
 
     init {
         viewModelScope.launch {
+            // Back off the longer idle sits: a quick attention-bounce right after
+            // entering idle, then widen to save battery. Suspends entirely while the
+            // watch is ambient/asleep so a pocketed pendant isn't polling every 4s.
+            var interval = 4000L
             while (true) {
+                AmbientState.isAmbient.first { !it } // pause while screen is asleep
                 try {
                     val needs = repo.listThreads()
                         .filter { it.statusEnum == ThreadStatus.NEEDS_INPUT }
@@ -47,7 +54,8 @@ class IdleViewModel(app: Application) : AndroidViewModel(app) {
                 } catch (_: Exception) {
                     // ignore transient errors while idling
                 }
-                delay(4000)
+                delay(interval)
+                interval = (interval + 3000L).coerceAtMost(20000L)
             }
         }
     }

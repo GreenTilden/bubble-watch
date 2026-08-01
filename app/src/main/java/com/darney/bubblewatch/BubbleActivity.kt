@@ -17,8 +17,15 @@ import com.darney.bubblewatch.ui.CoworkApp
 class BubbleActivity : ComponentActivity() {
 
     private val ambientCallback = object : AmbientLifecycleObserver.AmbientLifecycleCallback {
-        override fun onEnterAmbient(ambientDetails: AmbientLifecycleObserver.AmbientDetails) {}
-        override fun onExitAmbient() {}
+        // Ambient = screen dimmed/asleep. Signal it app-wide so the background poll
+        // loops stop hitting the bridge while the pendant is pocketed, and resume the
+        // instant the watch wakes. (See AmbientState + the poll loops.)
+        override fun onEnterAmbient(ambientDetails: AmbientLifecycleObserver.AmbientDetails) {
+            AmbientState.setAmbient(true)
+        }
+        override fun onExitAmbient() {
+            AmbientState.setAmbient(false)
+        }
         override fun onUpdateAmbient() {}
     }
 
@@ -27,9 +34,12 @@ class BubbleActivity : ComponentActivity() {
 
         lifecycle.addObserver(AmbientLifecycleObserver(this, ambientCallback))
 
+        // FLAG_KEEP_SCREEN_ON removed for pendant use: it pinned the display in
+        // always-on ambient and was the single biggest battery drain. The watch now
+        // dims and sleeps normally when idle (poll loops pause via AmbientState).
+        // TURN_SCREEN_ON + SHOW_WHEN_LOCKED still wake it glanceable on demand.
         window.addFlags(
-            WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
-                WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
+            WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
                 WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED
         )
 

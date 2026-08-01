@@ -3,12 +3,14 @@ package com.darney.bubblewatch.cowork.detail
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.darney.bubblewatch.AmbientState
 import com.darney.bubblewatch.data.BridgeRepository
 import com.darney.bubblewatch.data.PromptDto
 import com.darney.bubblewatch.data.ThreadStatus
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -53,6 +55,7 @@ class ThreadDetailViewModel(app: Application) : AndroidViewModel(app) {
         pollJob?.cancel()
         pollJob = viewModelScope.launch {
             while (true) {
+                AmbientState.isAmbient.first { !it } // pause while screen is asleep
                 refreshOnce(index)
                 // Suggestions are NEVER fetched automatically — they cost a Haiku
                 // call, so they only happen when the user taps the 💡 button
