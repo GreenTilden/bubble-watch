@@ -8,7 +8,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
@@ -37,6 +39,7 @@ import kotlinx.coroutines.delay
 private val AMBER = Color(0xFFFFB300)
 private val BLUE = Color(0xFF6FA8DC)
 private val GREY = Color(0xFF888888)
+private val GREEN = Color(0xFF57D9A3) // has tappable options — answer silently
 
 /** How many thread chips to show at most. NEEDS_INPUT threads are never hidden by
  *  this cap — WORKING threads fill whatever room is left. */
@@ -48,21 +51,31 @@ fun statusColor(status: ThreadStatus): Color = when (status) {
     else -> GREY
 }
 
-/** Actionable-first view: every thread needing input, then WORKING up to the cap. IDLE dropped. */
-private fun visibleThreads(all: List<ThreadDto>): List<ThreadDto> {
-    val needs = all.filter { it.statusEnum == ThreadStatus.NEEDS_INPUT }
-    val working = all.filter { it.statusEnum == ThreadStatus.WORKING }
+/** Every thread, ordered actionable-first: NEEDS_INPUT, then WORKING, then IDLE. */
+private fun orderedThreads(all: List<ThreadDto>): List<ThreadDto> {
+    fun rank(t: ThreadDto) = when (t.statusEnum) {
+        ThreadStatus.NEEDS_INPUT -> 0
+        ThreadStatus.WORKING -> 1
+        else -> 2
+    }
+    return all.sortedWith(compareBy({ rank(it) }, { it.index }))
+}
+
+/** Collapsed view: every thread needing input (never hidden), then WORKING up to the cap. */
+private fun collapsedThreads(ordered: List<ThreadDto>): List<ThreadDto> {
+    val needs = ordered.filter { it.statusEnum == ThreadStatus.NEEDS_INPUT }
+    val working = ordered.filter { it.statusEnum == ThreadStatus.WORKING }
     val room = (MAX_VISIBLE - needs.size).coerceAtLeast(0)
     return needs + working.take(room)
 }
 
 @Composable
-private fun StatusDot(status: ThreadStatus) {
+private fun Dot(color: Color) {
     Box(
         modifier = Modifier
             .size(12.dp)
             .clip(CircleShape)
-            .background(statusColor(status))
+            .background(color)
     )
 }
 
@@ -86,8 +99,11 @@ fun ThreadListScreen(
         }
     }
 
-    val visible = visibleThreads(state.threads)
-    val hidden = state.threads.size - visible.size
+    var expanded by remember { mutableStateOf(false) }
+    val ordered = orderedThreads(state.threads)
+    val collapsed = collapsedThreads(ordered)
+    val visible = if (expanded) ordered else collapsed
+    val hidden = ordered.size - collapsed.size
 
     Scaffold(
         timeText = { TimeText() },
@@ -128,13 +144,21 @@ fun ThreadListScreen(
                 ThreadChip(thread) { onOpenThread(thread.index) }
             }
 
-            if (hidden > 0) {
+            if (hidden > 0 && !expanded) {
                 item {
-                    Text(
-                        text = "+$hidden more",
-                        color = GREY,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier,
+                    Chip(
+                        label = { Text("Show all ($hidden more)") },
+                        onClick = { expanded = true },
+                        colors = ChipDefaults.secondaryChipColors(),
+                    )
+                }
+            }
+            if (expanded && ordered.size > MAX_VISIBLE) {
+                item {
+                    Chip(
+                        label = { Text("Show less") },
+                        onClick = { expanded = false },
+                        colors = ChipDefaults.secondaryChipColors(),
                     )
                 }
             }
@@ -164,10 +188,15 @@ fun ThreadListScreen(
 @Composable
 private fun ThreadChip(thread: ThreadDto, onClick: () -> Unit) {
     val label = thread.label.ifBlank { thread.title.ifBlank { thread.pane } }
+    // A parsed menu is distinct from plain needs-input: green dot + "tap to answer",
+    // so silently-answerable threads stand out from ones awaiting dictation.
+    val dotColor = if (thread.hasPrompt) GREEN else statusColor(thread.statusEnum)
+    val sub = if (thread.hasPrompt) "tap to answer"
+        else thread.statusEnum.name.replace('_', ' ').lowercase()
     Chip(
         label = { Text(label, maxLines = 2) },
-        secondaryLabel = { Text(thread.statusEnum.name.replace('_', ' ').lowercase()) },
-        icon = { StatusDot(thread.statusEnum) },
+        secondaryLabel = { Text(sub) },
+        icon = { Dot(dotColor) },
         onClick = onClick,
         colors = ChipDefaults.secondaryChipColors(),
         modifier = Modifier,

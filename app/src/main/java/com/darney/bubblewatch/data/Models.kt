@@ -12,6 +12,7 @@ data class ThreadDto(
     val glyph: String,
     val title: String,
     val label: String,
+    val hasPrompt: Boolean = false,
 ) {
     val statusEnum: ThreadStatus
         get() = when (status) {
@@ -46,6 +47,9 @@ data class TailDto(
 )
 
 data class SendRequest(val text: String, val submit: Boolean)
+
+/** An allowlisted control key: "escape" | "interrupt" | "clear" | "enter". */
+data class KeyRequest(val action: String)
 
 data class SendResponse(val ok: Boolean)
 

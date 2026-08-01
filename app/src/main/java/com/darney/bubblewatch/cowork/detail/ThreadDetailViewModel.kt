@@ -95,6 +95,20 @@ class ThreadDetailViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Send an allowlisted control key: escape | interrupt | clear | enter. */
+    fun sendKey(action: String) {
+        val index = _state.value.index
+        if (index < 0) return
+        viewModelScope.launch {
+            try {
+                repo.sendKey(index, action)
+                refreshOnce(index)
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(error = e.message ?: "key failed")
+            }
+        }
+    }
+
     fun appendToDraft(text: String) {
         val cur = _state.value.draft
         val joined = if (cur.isBlank()) text else "$cur $text"

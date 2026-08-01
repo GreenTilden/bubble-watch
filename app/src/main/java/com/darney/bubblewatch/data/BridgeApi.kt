@@ -18,4 +18,7 @@ interface BridgeApi {
 
     @POST
     suspend fun send(@Url url: String, @Body body: SendRequest): SendResponse
+
+    @POST
+    suspend fun sendKey(@Url url: String, @Body body: KeyRequest): SendResponse
 }

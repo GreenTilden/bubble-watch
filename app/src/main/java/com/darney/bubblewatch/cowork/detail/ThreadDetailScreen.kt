@@ -1,6 +1,8 @@
 package com.darney.bubblewatch.cowork.detail
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -19,6 +21,7 @@ import androidx.wear.compose.foundation.lazy.ScalingLazyColumn
 import androidx.wear.compose.foundation.lazy.rememberScalingLazyListState
 import androidx.wear.compose.material.Chip
 import androidx.wear.compose.material.ChipDefaults
+import androidx.wear.compose.material.CompactChip
 import androidx.wear.compose.material.ListHeader
 import androidx.wear.compose.material.PositionIndicator
 import androidx.wear.compose.material.Scaffold
@@ -156,6 +159,33 @@ fun ThreadDetailScreen(
                     colors = ChipDefaults.secondaryChipColors(),
                     modifier = Modifier.fillMaxWidth(),
                 )
+            }
+
+            // Soft keys: allowlisted terminal control for one-tap autonomy.
+            item(key = "softkeys") {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    CompactChip(
+                        onClick = { vm.sendKey("escape") },
+                        label = { Text("Esc") },
+                        colors = ChipDefaults.secondaryChipColors(),
+                        modifier = Modifier.weight(1f),
+                    )
+                    CompactChip(
+                        onClick = { vm.sendKey("interrupt") },
+                        label = { Text("⏹") },
+                        colors = ChipDefaults.secondaryChipColors(),
+                        modifier = Modifier.weight(1f),
+                    )
+                    CompactChip(
+                        onClick = { vm.sendKey("clear") },
+                        label = { Text("Clr") },
+                        colors = ChipDefaults.secondaryChipColors(),
+                        modifier = Modifier.weight(1f),
+                    )
+                }
             }
         }
     }

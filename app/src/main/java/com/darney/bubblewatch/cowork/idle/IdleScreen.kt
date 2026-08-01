@@ -21,15 +21,29 @@ import kotlinx.coroutines.launch
 
 class IdleViewModel(app: Application) : AndroidViewModel(app) {
     private val repo = BridgeRepository.get(app)
-    private val _needsAttention = MutableStateFlow(false)
-    val needsAttention: StateFlow<Boolean> = _needsAttention.asStateFlow()
+
+    // The set of threads already needing input when idle mode opened. We do NOT
+    // bounce back for these — only for a thread that NEWLY flips to needs-input.
+    private var baseline: Set<Int>? = null
+
+    private val _newAttention = MutableStateFlow(false)
+    val newAttention: StateFlow<Boolean> = _newAttention.asStateFlow()
 
     init {
         viewModelScope.launch {
             while (true) {
                 try {
-                    val any = repo.listThreads().any { it.statusEnum == ThreadStatus.NEEDS_INPUT }
-                    _needsAttention.value = any
+                    val needs = repo.listThreads()
+                        .filter { it.statusEnum == ThreadStatus.NEEDS_INPUT }
+                        .map { it.index }
+                        .toSet()
+                    val base = baseline
+                    if (base == null) {
+                        // First reading: whatever already needs input is the baseline.
+                        baseline = needs
+                    } else if (needs.any { it !in base }) {
+                        _newAttention.value = true
+                    }
                 } catch (_: Exception) {
                     // ignore transient errors while idling
                 }
@@ -41,8 +55,10 @@ class IdleViewModel(app: Application) : AndroidViewModel(app) {
 
 /**
  * The co-pilot idle/ambient screen: the bubble animation, shown while threads work.
- * When any thread flips to NEEDS_INPUT it pulses a haptic and calls [onNeedsAttention]
- * so the nav host can return to the list. A long-press exits manually via [onExit].
+ * When a thread that WASN'T already pending flips to NEEDS_INPUT it pulses a haptic
+ * and calls [onNeedsAttention] so the nav host returns to the list. Threads already
+ * pending when idle opened are ignored, so idle doesn't instantly bounce. A long-press
+ * exits manually via [onExit].
  */
 @Composable
 fun IdleScreen(
@@ -50,11 +66,11 @@ fun IdleScreen(
     onNeedsAttention: () -> Unit,
     vm: IdleViewModel = viewModel(),
 ) {
-    val needsAttention by vm.needsAttention.collectAsStateWithLifecycle()
+    val newAttention by vm.newAttention.collectAsStateWithLifecycle()
     val haptics = LocalHapticFeedback.current
 
-    LaunchedEffect(needsAttention) {
-        if (needsAttention) {
+    LaunchedEffect(newAttention) {
+        if (newAttention) {
             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
             onNeedsAttention()
         }

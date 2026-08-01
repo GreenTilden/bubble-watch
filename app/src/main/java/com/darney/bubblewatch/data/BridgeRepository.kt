@@ -61,6 +61,9 @@ class BridgeRepository private constructor(context: Context) {
     suspend fun send(index: Int, text: String, submit: Boolean): SendResponse =
         api.send("${base()}/api/threads/$index/send", SendRequest(text, submit))
 
+    suspend fun sendKey(index: Int, action: String): SendResponse =
+        api.sendKey("${base()}/api/threads/$index/key", KeyRequest(action))
+
     companion object {
         @Volatile
         private var instance: BridgeRepository? = null
