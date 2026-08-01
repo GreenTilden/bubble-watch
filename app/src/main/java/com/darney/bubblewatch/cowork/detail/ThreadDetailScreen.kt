@@ -1,6 +1,7 @@
 package com.darney.bubblewatch.cowork.detail
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -95,11 +96,10 @@ fun ThreadDetailScreen(
     var copied by remember { mutableStateOf(false) }
     LaunchedEffect(copied) { if (copied) { delay(1200); copied = false } }
 
-    // 🛁 context-bath is destructive to conversation context, so the first tap only
-    // ARMS it (label flips to "Confirm?"); a second tap within a few seconds fires.
-    // Auto-disarms so a stray tap can't leave it primed forever.
-    var bathArmed by remember { mutableStateOf(false) }
-    LaunchedEffect(bathArmed) { if (bathArmed) { delay(6000); bathArmed = false } }
+    // 🛁 context-bath is destructive to conversation context, so tapping the button
+    // opens an explicit confirm overlay — single taps, no timing window (the old
+    // two-tap-within-6s arm/confirm on the tiny chip was too easy to miss).
+    var bathConfirm by remember { mutableStateOf(false) }
 
     // On first entry, land at the TOP of the tail (natural reading order) rather
     // than auto-scrolling to the options at the bottom. After that first landing,
@@ -365,27 +365,17 @@ fun ThreadDetailScreen(
                         colors = ChipDefaults.secondaryChipColors(),
                         modifier = Modifier.weight(1f),
                     )
-                    // 🛁 Bath — context-compaction macro. First tap arms (Confirm?),
-                    // second tap fires vm.contextBath(). Disabled mid-run so it can't
-                    // re-trigger while a bath is in flight.
+                    // 🛁 Bath — context-compaction macro. One tap opens the confirm
+                    // overlay (destructive: it clears the session's context); the
+                    // overlay's "Do it" button actually fires it. Inert while running.
                     CompactChip(
                         onClick = {
                             if (state.bathStage != null) return@CompactChip
-                            if (bathArmed) {
-                                // Confirm tap: fire, with a firmer haptic so it's
-                                // unmistakable the destructive macro actually started.
-                                bathArmed = false
-                                vibrator.confirm()
-                                vm.contextBath()
-                            } else {
-                                // Arm tap: a light tick so you feel it caught (and know
-                                // to tap again) instead of wondering if it registered.
-                                bathArmed = true
-                                vibrator.tick()
-                            }
+                            bathConfirm = true
+                            vibrator.tick()
                         },
-                        label = { Text(if (bathArmed) "🛁 Tap again" else "🛁 Bath", maxLines = 1) },
-                        colors = if (bathArmed) ChipDefaults.primaryChipColors() else ChipDefaults.secondaryChipColors(),
+                        label = { Text("🛁 Bath", maxLines = 1) },
+                        colors = ChipDefaults.secondaryChipColors(),
                         modifier = Modifier.weight(1f),
                     )
                 }
@@ -408,6 +398,52 @@ fun ThreadDetailScreen(
                         color = Color(0xFF4ADE80),
                         fontSize = 13.sp,
                         modifier = Modifier.padding(top = 4.dp),
+                    )
+                }
+            }
+        }
+
+        // 🛁 confirm overlay — single-tap, explicit, unmistakable. "Do it" fires the
+        // (destructive) macro; Cancel or tapping the backdrop backs out.
+        if (bathConfirm) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color(0xF2000000))
+                    .clickable { bathConfirm = false },
+                contentAlignment = Alignment.Center,
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                ) {
+                    Text(
+                        text = "🛁 Reset context?",
+                        color = AMBER,
+                        fontSize = 15.sp,
+                        textAlign = TextAlign.Center,
+                    )
+                    Text(
+                        text = "Copies the tail, clears the session, re-seeds it.",
+                        fontSize = 11.sp,
+                        textAlign = TextAlign.Center,
+                    )
+                    Chip(
+                        label = { Text("🛁 Do it") },
+                        onClick = {
+                            bathConfirm = false
+                            vibrator.confirm()
+                            vm.contextBath()
+                        },
+                        colors = ChipDefaults.primaryChipColors(),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    CompactChip(
+                        label = { Text("Cancel") },
+                        onClick = { bathConfirm = false },
+                        colors = ChipDefaults.secondaryChipColors(),
+                        modifier = Modifier.fillMaxWidth(),
                     )
                 }
             }
