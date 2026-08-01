@@ -62,6 +62,12 @@ fun ThreadDetailScreen(
     var copied by remember { mutableStateOf(false) }
     LaunchedEffect(copied) { if (copied) { delay(1200); copied = false } }
 
+    // 🛁 context-bath is destructive to conversation context, so the first tap only
+    // ARMS it (label flips to "Confirm?"); a second tap within a few seconds fires.
+    // Auto-disarms so a stray tap can't leave it primed forever.
+    var bathArmed by remember { mutableStateOf(false) }
+    LaunchedEffect(bathArmed) { if (bathArmed) { delay(4000); bathArmed = false } }
+
     // On first entry, land at the TOP of the tail (natural reading order) rather
     // than auto-scrolling to the options at the bottom. After that first landing,
     // follow new lines as they arrive — but only if the user is already near the
@@ -261,6 +267,21 @@ fun ThreadDetailScreen(
                 )
             }
 
+            // 🛁 context-bath live checkpoint — a simple stage line the user can
+            // watch step through COPY → CLEAR → PASTE → GO → ✓. Only shown while a
+            // bath is running (bathStage != null).
+            state.bathStage?.let { stage ->
+                item(key = "bathstage") {
+                    Text(
+                        text = stage,
+                        color = AMBER,
+                        fontSize = 13.sp,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
+
             // Terminal controls — act on the remote pane (these already work).
             item(key = "softkeys1") {
                 Row(
@@ -308,10 +329,21 @@ fun ThreadDetailScreen(
                         colors = ChipDefaults.secondaryChipColors(),
                         modifier = Modifier.weight(1f),
                     )
+                    // 🛁 Bath — context-compaction macro. First tap arms (Confirm?),
+                    // second tap fires vm.contextBath(). Disabled mid-run so it can't
+                    // re-trigger while a bath is in flight.
                     CompactChip(
-                        onClick = { vm.clearDraft() },
-                        label = { Text("✖ Clr", maxLines = 1) },
-                        colors = ChipDefaults.secondaryChipColors(),
+                        onClick = {
+                            if (state.bathStage != null) return@CompactChip
+                            if (bathArmed) {
+                                bathArmed = false
+                                vm.contextBath()
+                            } else {
+                                bathArmed = true
+                            }
+                        },
+                        label = { Text(if (bathArmed) "🛁 Confirm?" else "🛁 Bath", maxLines = 1) },
+                        colors = if (bathArmed) ChipDefaults.primaryChipColors() else ChipDefaults.secondaryChipColors(),
                         modifier = Modifier.weight(1f),
                     )
                 }

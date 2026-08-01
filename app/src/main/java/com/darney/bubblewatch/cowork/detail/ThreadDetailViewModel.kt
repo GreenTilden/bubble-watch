@@ -26,6 +26,9 @@ data class ThreadDetailUiState(
     // and when a new prompt / needs-input transition appears), not every tick.
     val suggestions: List<String> = emptyList(),
     val suggestionsLoading: Boolean = false,
+    // Context-bath (🛁) progress. null = idle. Otherwise a short stage label the
+    // screen renders as a live checkpoint line: COPY → CLEAR → PASTE → GO → done.
+    val bathStage: String? = null,
     // Per-thread TX meter, carried from the thread list metadata (retains last
     // known values when a poll misses the status line).
     val model: String? = null,
@@ -148,6 +151,50 @@ class ThreadDetailViewModel(app: Application) : AndroidViewModel(app) {
                 refreshOnce(index)
             } catch (e: Exception) {
                 _state.value = _state.value.copy(error = e.message ?: "key failed")
+            }
+        }
+    }
+
+    /**
+     * Context-bath macro (🛁), watch-orchestrated with a visible per-stage
+     * checkpoint. Destructive to conversation context, so the screen arms this
+     * behind a confirm tap before calling it. Runs COPY → CLEAR → /clear settle →
+     * PASTE → GO, updating [ThreadDetailUiState.bathStage] at each step so the user
+     * can watch it happen. Failures surface via [error] and reset the bath state.
+     *
+     * CAVEAT: the bridge collapses newlines to spaces on /send, so the re-seeded
+     * tail lands as one space-joined line (documented/accepted behavior).
+     */
+    fun contextBath() {
+        val index = _state.value.index
+        if (index < 0) return
+        viewModelScope.launch {
+            try {
+                // Stage COPY: capture the current tail before we wipe context.
+                _state.value = _state.value.copy(bathStage = "🛁 COPY", error = null)
+                val captured = _state.value.lines.joinToString("\n")
+                delay(200)
+                // Stage CLEAR: reset Claude Code's conversation context.
+                _state.value = _state.value.copy(bathStage = "🛁 CLEAR")
+                repo.send(index, "/clear", submit = true)
+                // Give Claude Code a beat to process /clear before we re-seed.
+                delay(600)
+                // Stage PASTE: type the captured tail back in (no submit yet).
+                _state.value = _state.value.copy(bathStage = "🛁 PASTE")
+                repo.send(index, captured, submit = false)
+                delay(200)
+                // Stage GO: press Enter to submit the re-seeded context.
+                _state.value = _state.value.copy(bathStage = "🛁 GO")
+                repo.sendKey(index, "enter")
+                // Done — brief confirmation, drop any stale suggestions, refresh.
+                _state.value = _state.value.copy(bathStage = "✓ context reset", suggestions = emptyList())
+                refreshOnce(index)
+                delay(1500)
+                if (_state.value.bathStage == "✓ context reset") {
+                    _state.value = _state.value.copy(bathStage = null)
+                }
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(bathStage = null, error = e.message ?: "context bath failed")
             }
         }
     }
