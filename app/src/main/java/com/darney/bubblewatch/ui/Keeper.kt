@@ -1,5 +1,7 @@
 package com.darney.bubblewatch.ui
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -12,13 +14,21 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathMeasure
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -48,7 +58,56 @@ private val WATER = Color(0x9970C8E6)     // translucent cyan — the mark shows
 private val FOAM = Color(0xFFFFFFFF)
 private val LABEL = Color(0xFFFFB300)
 
-enum class KeeperMode { THINKING, CALM, BATH }
+enum class KeeperMode { THINKING, BATH }
+
+private val SENT_GREEN = Color(0xFF4ADE80)
+
+/** Overshoot ease so the check "pops" in past 1.0 and settles — the satisfying bit. */
+private fun easeOutBack(t: Float): Float {
+    val c1 = 1.70158f
+    val c3 = c1 + 1f
+    val x = t - 1f
+    return 1f + c3 * x * x * x + c1 * x * x
+}
+
+/**
+ * Self-animating green success checkmark — the "sent ✓" confirmation. Draws its
+ * stroke on (left-down then up-right) with a pop, then emits one expanding ring
+ * ping. Runs once on appearance (the confirm overlay mounts it fresh each send).
+ */
+@Composable
+fun SentCheck(modifier: Modifier = Modifier, sizeDp: Dp = 76.dp) {
+    val p = remember { Animatable(0f) }
+    LaunchedEffect(Unit) { p.animateTo(1f, tween(560)) }
+    Canvas(modifier = modifier.size(sizeDp)) {
+        val s = size.minDimension
+        val t = p.value.coerceIn(0f, 1f)
+        val reveal = FastOutSlowInEasing.transform(t)
+        scale(easeOutBack(t), pivot = center) {
+            val path = Path().apply {
+                moveTo(0.22f * s, 0.53f * s)
+                lineTo(0.42f * s, 0.72f * s)
+                lineTo(0.78f * s, 0.30f * s)
+            }
+            val pm = PathMeasure().apply { setPath(path, false) }
+            val seg = Path()
+            pm.getSegment(0f, pm.length * reveal, seg, true)
+            drawPath(
+                seg, SENT_GREEN,
+                style = Stroke(width = 0.13f * s, cap = StrokeCap.Round, join = StrokeJoin.Round),
+            )
+            if (t > 0.5f) {
+                val rp = ((t - 0.5f) / 0.5f).coerceIn(0f, 1f)
+                drawCircle(
+                    SENT_GREEN.copy(alpha = 0.5f * (1f - rp)),
+                    radius = (0.36f + 0.12f * rp) * s,
+                    center = center,
+                    style = Stroke(width = 0.03f * s),
+                )
+            }
+        }
+    }
+}
 
 // 32×32 sprite. '.'=empty, blue: b/B/d = base/gloss/shade, yellow: y/Y/g.
 private val MARK = listOf(

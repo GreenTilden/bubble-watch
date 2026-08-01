@@ -3,10 +3,12 @@ package com.darney.bubblewatch.cowork.detail
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -41,6 +43,7 @@ import com.darney.bubblewatch.cowork.threads.meterLabel
 import com.darney.bubblewatch.cowork.threads.statusColor
 import com.darney.bubblewatch.ui.KeeperIndicator
 import com.darney.bubblewatch.ui.KeeperMode
+import com.darney.bubblewatch.ui.SentCheck
 import com.darney.bubblewatch.ui.rotaryScroll
 import kotlinx.coroutines.delay
 
@@ -71,7 +74,7 @@ fun ThreadDetailScreen(
         wasSending = state.sending
         if (prev && !state.sending && state.error == null) {
             showConfirm = true
-            delay(1100)
+            delay(1250)
             showConfirm = false
             onDone()
         }
@@ -373,7 +376,15 @@ fun ThreadDetailScreen(
                     .background(Color(0xE6000000)),
                 contentAlignment = Alignment.Center,
             ) {
-                KeeperIndicator(label = "sent ✓", mode = KeeperMode.CALM)
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    SentCheck()
+                    Text(
+                        text = "sent",
+                        color = Color(0xFF4ADE80),
+                        fontSize = 13.sp,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
+                }
             }
         }
       }
