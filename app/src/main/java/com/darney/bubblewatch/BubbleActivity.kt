@@ -53,6 +53,11 @@ class BubbleActivity : ComponentActivity() {
             requestNotifPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
 
+        // Keep that bubble alive: a slow WorkManager job re-posts it if Wear
+        // kills the process and the system clears the notification, and again
+        // after a reboot -- otherwise it vanishes and never comes back.
+        BubbleKeepAliveWorker.ensureScheduled(this)
+
         // Wake glanceable on demand (e.g. relaunched from the notif) but do NOT pin
         // the screen on — FLAG_KEEP_SCREEN_ON was the biggest drain and stays off.
         window.addFlags(

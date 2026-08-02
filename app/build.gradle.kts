@@ -88,6 +88,10 @@ dependencies {
     // Settings persistence
     implementation("androidx.datastore:datastore-preferences:1.0.0")
 
+    // Periodic re-post of the persistent shortcut notification (survives
+    // process death + reboot; battery-safe, no foreground service)
+    implementation("androidx.work:work-runtime-ktx:2.9.1")
+
     // Networking to the clawatch-bridge
     implementation("com.squareup.retrofit2:retrofit:2.11.0")
     implementation("com.squareup.retrofit2:converter-gson:2.11.0")
