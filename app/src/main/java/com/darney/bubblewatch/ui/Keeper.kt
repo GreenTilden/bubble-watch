@@ -254,12 +254,14 @@ fun KeeperIndicator(
     label: String,
     modifier: Modifier = Modifier,
     mode: KeeperMode = KeeperMode.THINKING,
+    scale: Float = 1f,
 ) {
     Column(
         modifier = modifier.fillMaxWidth().padding(vertical = 2.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        KeeperPixel(heightDp = if (mode == KeeperMode.BATH) 60.dp else 48.dp, mode = mode)
+        val baseH = if (mode == KeeperMode.BATH) 60.dp else 48.dp
+        KeeperPixel(heightDp = baseH * scale, mode = mode)
         if (label.isNotBlank()) {
             Text(
                 text = label,

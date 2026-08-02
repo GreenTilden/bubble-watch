@@ -12,6 +12,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -452,13 +455,28 @@ fun ThreadDetailScreen(
         // 🛁 context-bath overlay — front-and-center like the demo: the tub + rising
         // bubbles, with the live stage caption cycling COPY → CLEAR → PASTE → GO → ✓.
         state.bathStage?.let { stage ->
+            // The Keeper grows one step bigger at each stage of the soak, climaxing
+            // biggest on the ✓ (a failure deflates back to the starting size).
+            val step = when {
+                stage.startsWith("🛁 COPY") -> 0
+                stage.startsWith("🛁 CLEAR") -> 1
+                stage.startsWith("🛁 PASTE") -> 2
+                stage.startsWith("🛁 GO") -> 3
+                stage.startsWith("✓") -> 4
+                else -> 0
+            }
+            val bathScale by animateFloatAsState(
+                targetValue = 1f + step * 0.2f,
+                animationSpec = tween(420, easing = FastOutSlowInEasing),
+                label = "bathGrow",
+            )
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(Color(0xE6000000)),
                 contentAlignment = Alignment.Center,
             ) {
-                KeeperIndicator(label = stage, mode = KeeperMode.BATH)
+                KeeperIndicator(label = stage, mode = KeeperMode.BATH, scale = bathScale)
             }
         }
       }
