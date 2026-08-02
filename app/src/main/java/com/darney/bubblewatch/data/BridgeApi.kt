@@ -24,4 +24,7 @@ interface BridgeApi {
 
     @POST
     suspend fun suggest(@Url url: String): SuggestResponseDto
+
+    @POST
+    suspend fun summary(@Url url: String): SummaryResponseDto
 }

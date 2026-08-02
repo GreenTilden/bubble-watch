@@ -4,7 +4,12 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -13,9 +18,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -49,7 +54,7 @@ private val GREY = Color(0xFF888888)
 private val GREEN = Color(0xFF57D9A3) // has tappable options — answer silently
 private val RED = Color(0xFFE06C6C)   // context/cost pressure — session hygiene warning
 
-/** How many thread chips to show at most. NEEDS_INPUT threads are never hidden by
+/** How many thread rows to show at most. NEEDS_INPUT threads are never hidden by
  *  this cap — WORKING threads fill whatever room is left. */
 private const val MAX_VISIBLE = 3
 
@@ -112,7 +117,7 @@ fun ThreadListScreen(
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
     val listState = rememberScalingLazyListState()
-    val focusRequester = remember { FocusRequester() }
+    val focusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
     val scope = rememberCoroutineScope()
 
     // Land at the top whenever the list becomes current again — e.g. after a reply
@@ -137,6 +142,11 @@ fun ThreadListScreen(
     val collapsed = collapsedThreads(ordered)
     val visible = if (expanded) ordered else collapsed
     val hidden = ordered.size - collapsed.size
+
+    // NEEDS_INPUT threads are the only tappable ones (you reply to them); everything
+    // else is shown read-only under a "Working" subheading with its live summary.
+    val needs = visible.filter { it.statusEnum == ThreadStatus.NEEDS_INPUT }
+    val others = visible.filter { it.statusEnum != ThreadStatus.NEEDS_INPUT }
 
     Scaffold(
         timeText = { TimeText() },
@@ -173,8 +183,27 @@ fun ThreadListScreen(
                 }
             }
 
-            items(visible, key = { it.index }) { thread ->
+            // Tappable: threads awaiting you.
+            items(needs, key = { "need${it.index}" }) { thread ->
                 ThreadChip(thread) { onOpenThread(thread.index) }
+            }
+
+            // Read-only: threads that are busy. No tap — there's nothing to answer
+            // while an agent is mid-work; the Haiku line says what it's doing.
+            if (others.isNotEmpty()) {
+                item(key = "workinghdr") {
+                    Text(
+                        text = "Working",
+                        color = GREY,
+                        fontSize = 12.sp,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 14.dp, top = 6.dp, bottom = 2.dp),
+                    )
+                }
+                items(others, key = { "work${it.index}" }) { thread ->
+                    WorkingRow(thread, state.summaries[thread.index])
+                }
             }
 
             if (hidden > 0 && !expanded) {
@@ -249,4 +278,39 @@ private fun ThreadChip(thread: ThreadDto, onClick: () -> Unit) {
         colors = ChipDefaults.secondaryChipColors(),
         modifier = Modifier,
     )
+}
+
+/** A busy thread, rendered read-only (deliberately NOT a Chip — no onClick, nothing to
+ *  tap). Shows the live Haiku one-liner when we have it, else the plain status, plus the
+ *  per-thread TX meter for hygiene. */
+@Composable
+private fun WorkingRow(thread: ThreadDto, summary: String?) {
+    val label = thread.label.ifBlank { thread.title.ifBlank { thread.pane } }
+    val sub = when {
+        !summary.isNullOrBlank() -> summary
+        thread.statusEnum == ThreadStatus.WORKING -> "working…"
+        else -> thread.statusEnum.name.replace('_', ' ').lowercase()
+    }
+    val meter = meterLabel(thread.ctxTokens, thread.costUsd)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Dot(statusColor(thread.statusEnum))
+        Spacer(Modifier.width(8.dp))
+        Column {
+            Text(label, maxLines = 2, fontSize = 14.sp)
+            Text(sub, color = GREY, fontSize = 11.sp, maxLines = 2)
+            if (meter != null) {
+                Text(
+                    text = meter,
+                    color = meterColor(thread.ctxTier, thread.ctxTokens),
+                    fontSize = 11.sp,
+                    maxLines = 1,
+                )
+            }
+        }
+    }
 }

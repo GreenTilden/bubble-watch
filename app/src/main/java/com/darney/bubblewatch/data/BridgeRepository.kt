@@ -69,6 +69,11 @@ class BridgeRepository private constructor(context: Context) {
         runCatching { api.suggest("${base()}/api/threads/$index/suggest").suggestions }
             .getOrDefault(emptyList())
 
+    /** One-line summary of a working thread. Swallows any failure to "" (plain status). */
+    suspend fun summary(index: Int): String =
+        runCatching { api.summary("${base()}/api/threads/$index/summary").summary }
+            .getOrDefault("")
+
     companion object {
         @Volatile
         private var instance: BridgeRepository? = null
