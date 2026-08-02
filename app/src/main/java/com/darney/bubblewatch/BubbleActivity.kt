@@ -9,15 +9,24 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
-import androidx.wear.ambient.AmbientLifecycleObserver
 import com.darney.bubblewatch.ui.CoworkApp
 
 /**
  * Single launcher activity. Hosts the Cowork nav graph (thread list / detail / voice
- * reply / bubble idle mode). Ambient + keep-screen-on are kept app-wide so the
- * co-pilot stays glanceable. The old global back-block was REMOVED: it belonged to
- * toddler mode only and would trap the co-pilot; the bubble idle screen now handles
- * its own exit (long-press), and everything else uses swipe-to-dismiss navigation.
+ * reply / bubble idle mode).
+ *
+ * FULL-RETREAT behaviour (2026-08-02): Bubbles is a normal foreground app, NOT an
+ * always-on ambient surface. It no longer registers for ambient callbacks, so when
+ * the display times out (wrist down / idle) the system returns to the user's own
+ * watch face instead of keeping Bubbles up — a wrist-raise shows the watch face, not
+ * this app. Background poll loops are suspended whenever the activity isn't visible
+ * (onStop -> AmbientState=true; onStart -> false) so nothing hits the bridge while
+ * backgrounded. The way back in is an explicit tap: the persistent 🫧 notification or
+ * the launcher. This replaces the old ambient-surface design, which resumed on every
+ * wrist-turn and burned battery.
+ *
+ * NB: AmbientState is now really an "app not in foreground" gate (name kept to avoid
+ * churn in the poll loops that read it); it covers screen-off AND background.
  */
 class BubbleActivity : ComponentActivity() {
 
@@ -27,25 +36,10 @@ class BubbleActivity : ComponentActivity() {
             if (granted) PersistentBubble.show(this)
         }
 
-    private val ambientCallback = object : AmbientLifecycleObserver.AmbientLifecycleCallback {
-        // Ambient = screen dimmed/asleep. Signal it app-wide so the background poll
-        // loops stop hitting the bridge while the pendant is pocketed, and resume the
-        // instant the watch wakes. (See AmbientState + the poll loops.)
-        override fun onEnterAmbient(ambientDetails: AmbientLifecycleObserver.AmbientDetails) {
-            AmbientState.setAmbient(true)
-        }
-        override fun onExitAmbient() {
-            AmbientState.setAmbient(false)
-        }
-        override fun onUpdateAmbient() {}
-    }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         // System splash covers cold-start until the first Compose frame (SplashCard).
         installSplashScreen()
         super.onCreate(savedInstanceState)
-
-        lifecycle.addObserver(AmbientLifecycleObserver(this, ambientCallback))
 
         // Pin a silent "🫧 Bubbles" shortcut in the notification stream so a tap always
         // gets back into the app. Shows immediately if already permitted; on Wear OS 4
@@ -59,10 +53,8 @@ class BubbleActivity : ComponentActivity() {
             requestNotifPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
 
-        // FLAG_KEEP_SCREEN_ON removed for pendant use: it pinned the display in
-        // always-on ambient and was the single biggest battery drain. The watch now
-        // dims and sleeps normally when idle (poll loops pause via AmbientState).
-        // TURN_SCREEN_ON + SHOW_WHEN_LOCKED still wake it glanceable on demand.
+        // Wake glanceable on demand (e.g. relaunched from the notif) but do NOT pin
+        // the screen on — FLAG_KEEP_SCREEN_ON was the biggest drain and stays off.
         window.addFlags(
             WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
                 WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED
@@ -71,5 +63,18 @@ class BubbleActivity : ComponentActivity() {
         setContent {
             CoworkApp()
         }
+    }
+
+    // Foreground/visible -> resume the background poll loops.
+    override fun onStart() {
+        super.onStart()
+        AmbientState.setAmbient(false)
+    }
+
+    // Not visible (screen off / backgrounded / retreated to watch face) -> suspend the
+    // poll loops so Bubbles never talks to the bridge while it isn't on screen.
+    override fun onStop() {
+        super.onStop()
+        AmbientState.setAmbient(true)
     }
 }
