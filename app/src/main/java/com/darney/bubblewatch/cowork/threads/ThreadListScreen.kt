@@ -113,9 +113,12 @@ fun ThreadListScreen(
     onOpenThread: (Int) -> Unit,
     onOpenIdle: () -> Unit,
     onOpenSettings: () -> Unit,
+    onFirstLoad: () -> Unit = {},
     vm: ThreadListViewModel = viewModel(),
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
+    // Signal the splash that the first poll landed so it can crossfade away.
+    LaunchedEffect(state.loading) { if (!state.loading) onFirstLoad() }
     val listState = rememberScalingLazyListState()
     val focusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
     val scope = rememberCoroutineScope()

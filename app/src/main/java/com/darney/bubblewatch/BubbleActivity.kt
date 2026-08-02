@@ -8,6 +8,7 @@ import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.wear.ambient.AmbientLifecycleObserver
 import com.darney.bubblewatch.ui.CoworkApp
 
@@ -40,6 +41,8 @@ class BubbleActivity : ComponentActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // System splash covers cold-start until the first Compose frame (SplashCard).
+        installSplashScreen()
         super.onCreate(savedInstanceState)
 
         lifecycle.addObserver(AmbientLifecycleObserver(this, ambientCallback))

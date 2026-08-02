@@ -1,6 +1,17 @@
 package com.darney.bubblewatch.ui
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.navigation.NavType
 import androidx.navigation.navArgument
@@ -13,6 +24,7 @@ import com.darney.bubblewatch.cowork.detail.ThreadDetailScreen
 import com.darney.bubblewatch.cowork.idle.IdleScreen
 import com.darney.bubblewatch.cowork.settings.SettingsScreen
 import com.darney.bubblewatch.cowork.threads.ThreadListScreen
+import kotlinx.coroutines.delay
 
 object Routes {
     const val THREADS = "threads"
@@ -41,41 +53,69 @@ private val GreenBubblesColors = Colors(
     onError = Color(0xFF000000),
 )
 
+// The in-app title card stays up at least this long (so the bath animation reads) and
+// never longer than the cap, even if the first poll hangs (offline / not configured).
+private const val SPLASH_MIN_MS = 1300L
+private const val SPLASH_MAX_MS = 4000L
+
 @Composable
 fun CoworkApp() {
     MaterialTheme(colors = GreenBubblesColors) {
-        val nav = rememberSwipeDismissableNavController()
-        SwipeDismissableNavHost(navController = nav, startDestination = Routes.THREADS) {
-            composable(Routes.THREADS) {
-                ThreadListScreen(
-                    onOpenThread = { index -> nav.navigate(Routes.detail(index)) },
-                    onOpenIdle = { nav.navigate(Routes.IDLE) },
-                    onOpenSettings = { nav.navigate(Routes.SETTINGS) },
-                )
+        // The thread list mounts underneath immediately and loads while the splash is
+        // up; we crossfade the splash away once its first poll returns (or a cap hits).
+        var listLoaded by remember { mutableStateOf(false) }
+        var minTimePassed by remember { mutableStateOf(false) }
+        LaunchedEffect(Unit) { delay(SPLASH_MIN_MS); minTimePassed = true }
+        LaunchedEffect(Unit) { delay(SPLASH_MAX_MS); listLoaded = true } // hard fallback
+        val showSplash = !(listLoaded && minTimePassed)
+        val splashAlpha by animateFloatAsState(
+            targetValue = if (showSplash) 1f else 0f,
+            animationSpec = tween(500),
+            label = "splashFade",
+        )
+
+        Box(Modifier.fillMaxSize()) {
+            val nav = rememberSwipeDismissableNavController()
+            SwipeDismissableNavHost(navController = nav, startDestination = Routes.THREADS) {
+                composable(Routes.THREADS) {
+                    ThreadListScreen(
+                        onOpenThread = { index -> nav.navigate(Routes.detail(index)) },
+                        onOpenIdle = { nav.navigate(Routes.IDLE) },
+                        onOpenSettings = { nav.navigate(Routes.SETTINGS) },
+                        onFirstLoad = { listLoaded = true },
+                    )
+                }
+                composable(
+                    Routes.DETAIL,
+                    arguments = listOf(navArgument("index") { type = NavType.IntType }),
+                ) { entry ->
+                    val index = entry.arguments?.getInt("index") ?: return@composable
+                    ThreadDetailScreen(
+                        index = index,
+                        // After a reply/menu-answer lands, drop back to the thread list
+                        // (which scrolls itself to the top on resume) for the next glance.
+                        onDone = { nav.popBackStack(Routes.THREADS, inclusive = false) },
+                    )
+                }
+                composable(Routes.IDLE) {
+                    IdleScreen(
+                        onExit = { nav.popBackStack() },
+                        onNeedsAttention = {
+                            // Return to the thread list when something needs input.
+                            nav.popBackStack(Routes.THREADS, inclusive = false)
+                        },
+                    )
+                }
+                composable(Routes.SETTINGS) {
+                    SettingsScreen()
+                }
             }
-            composable(
-                Routes.DETAIL,
-                arguments = listOf(navArgument("index") { type = NavType.IntType }),
-            ) { entry ->
-                val index = entry.arguments?.getInt("index") ?: return@composable
-                ThreadDetailScreen(
-                    index = index,
-                    // After a reply/menu-answer lands, drop back to the thread list
-                    // (which scrolls itself to the top on resume) for the next glance.
-                    onDone = { nav.popBackStack(Routes.THREADS, inclusive = false) },
-                )
-            }
-            composable(Routes.IDLE) {
-                IdleScreen(
-                    onExit = { nav.popBackStack() },
-                    onNeedsAttention = {
-                        // Return to the thread list when something needs input.
-                        nav.popBackStack(Routes.THREADS, inclusive = false)
-                    },
-                )
-            }
-            composable(Routes.SETTINGS) {
-                SettingsScreen()
+
+            // Splash overlay on top of the list; removed from composition once faded out
+            // (stops the bath animation). Enters instantly (seamless from the system
+            // splash), fades out over 500ms to reveal the loaded list.
+            if (splashAlpha > 0.01f) {
+                SplashCard(Modifier.fillMaxSize().alpha(splashAlpha))
             }
         }
     }
