@@ -77,15 +77,16 @@ fun ThreadDetailScreen(
     // the "answer and glance back at the overview" loop. Guarded so it never fires
     // on a failed send or on the 🛁 / soft-key paths (those don't touch `sending`).
     var showConfirm by remember { mutableStateOf(false) }
-    var wasSending by remember { mutableStateOf(false) }
-    LaunchedEffect(state.sending) {
-        val prev = wasSending
-        wasSending = state.sending
-        if (prev && !state.sending && state.error == null) {
+    // Auto-return is driven by a one-shot from the VM (a voice reply, or the LAST
+    // answer in a stacked-question set) — NOT every `sending` flip, so answering
+    // question 1 of N no longer bounces us out before question 2 renders.
+    LaunchedEffect(state.sendConfirm) {
+        if (state.sendConfirm) {
             showConfirm = true
             delay(1250)
             showConfirm = false
             onDone()
+            vm.consumeSendConfirm()
         }
     }
 
@@ -201,6 +202,17 @@ fun ThreadDetailScreen(
             // Claude Code menus select on a digit keypress, so freetext staging
             // can't reliably answer a menu (and mustn't clobber stacked questions).
             state.prompt?.let { prompt ->
+                if (state.moreQuestions) {
+                    item(key = "nextq") {
+                        Text(
+                            text = "▸ Next question — answer below",
+                            color = Color(0xFF57D9A3),
+                            fontSize = 12.sp,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                }
                 item(key = "q") {
                     Text(
                         text = "❓ ${prompt.question}".trim(),
@@ -382,6 +394,19 @@ fun ThreadDetailScreen(
                         modifier = Modifier.weight(1f),
                     )
                 }
+            }
+        }
+
+        // Brief "answering…" overlay while we send the digit and watch for the next
+        // stacked question — blocks a double-tap and shows the tap registered.
+        if (state.answering && !showConfirm) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color(0xCC000000)),
+                contentAlignment = Alignment.Center,
+            ) {
+                KeeperIndicator(label = "answering…", mode = KeeperMode.THINKING)
             }
         }
 

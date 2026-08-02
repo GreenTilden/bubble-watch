@@ -23,6 +23,10 @@ data class ThreadDetailUiState(
     val prompt: PromptDto? = null,
     val draft: String = "",
     val sending: Boolean = false,
+    // Menu-answer flow for stacked (multi-)questions:
+    val answering: Boolean = false,     // digit sent; watching for the next question / completion
+    val moreQuestions: Boolean = false, // the current prompt is a follow-up in a stacked ask
+    val sendConfirm: Boolean = false,   // one-shot: a returning send finished -> confirm + go back
     val error: String? = null,
     // Momentum suggestions from the bridge. Fetched off the poll path (on entry
     // and when a new prompt / needs-input transition appears), not every tick.
@@ -69,6 +73,8 @@ class ThreadDetailViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private suspend fun refreshOnce(index: Int) {
+        // Don't fight the menu-answer sequence — selectOption drives the prompt then.
+        if (_state.value.answering) return
         try {
             val threads = repo.listThreads()
             val meta = threads.find { it.index == index }
@@ -93,6 +99,7 @@ class ThreadDetailViewModel(app: Application) : AndroidViewModel(app) {
                 // Keep the SAME instances when unchanged so their items don't recompose.
                 lines = if (linesChanged) tail.lines else cur.lines,
                 prompt = if (promptChanged) tail.prompt else cur.prompt,
+                moreQuestions = if (promptChanged) false else cur.moreQuestions,
                 // Meter from list metadata; keep last known when a poll misses it.
                 model = meta?.model ?: cur.model,
                 ctxTokens = meta?.ctxTokens ?: cur.ctxTokens,
@@ -127,20 +134,63 @@ class ThreadDetailViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** Tap an interactive option: send its digit as a single keypress (no Enter —
-     *  Claude Code menus select on the number key). */
+    /** Tap an interactive option: send its digit (no Enter — CC menus select on the
+     *  number key), then watch for the NEXT stacked question. Claude Code presents a
+     *  multi-question ask one menu at a time; after sending we poll briefly and, if a
+     *  DIFFERENT menu appears, present it and cue the user to answer it too — looping
+     *  until the menu stays gone (all answered), only THEN confirming + returning. */
     fun selectOption(key: String) {
         val index = _state.value.index
         if (index < 0) return
+        val answered = _state.value.prompt
         viewModelScope.launch {
-            _state.value = _state.value.copy(sending = true)
+            _state.value = _state.value.copy(answering = true, error = null, suggestions = emptyList())
             try {
                 repo.send(index, key, submit = false)
-                _state.value = _state.value.copy(sending = false, error = null, suggestions = emptyList())
-                refreshOnce(index)
             } catch (e: Exception) {
-                _state.value = _state.value.copy(sending = false, error = e.message ?: "send failed")
+                _state.value = _state.value.copy(answering = false, error = e.message ?: "send failed")
+                return@launch
             }
+            // Poll for the next question (a different menu) or completion (menu gone).
+            var nullStreak = 0
+            var latestLines = _state.value.lines
+            repeat(NEXT_Q_POLLS) {
+                delay(NEXT_Q_INTERVAL_MS)
+                val tail = runCatching { repo.tail(index) }.getOrNull() ?: return@repeat
+                latestLines = tail.lines
+                val p = tail.prompt
+                when {
+                    p != null && p != answered -> {
+                        // The next stacked question — present it and cue the user.
+                        _state.value = _state.value.copy(
+                            answering = false,
+                            prompt = p,
+                            lines = tail.lines,
+                            moreQuestions = true,
+                        )
+                        return@launch
+                    }
+                    p == null -> {
+                        nullStreak++
+                        if (nullStreak >= NEXT_Q_DONE_STREAK) {
+                            // Menu stayed gone -> every question answered. Confirm + return.
+                            _state.value = _state.value.copy(
+                                answering = false,
+                                prompt = null,
+                                lines = tail.lines,
+                                moreQuestions = false,
+                                sendConfirm = true,
+                            )
+                            return@launch
+                        }
+                    }
+                    else -> nullStreak = 0 // same menu still rendering; keep waiting
+                }
+            }
+            // Timed out with the same menu up (CC slow, or identical stacked questions):
+            // don't bounce — resume normal polling on this screen.
+            _state.value = _state.value.copy(answering = false, lines = latestLines)
+            refreshOnce(index)
         }
     }
 
@@ -221,6 +271,17 @@ class ThreadDetailViewModel(app: Application) : AndroidViewModel(app) {
         _state.value = _state.value.copy(draft = "")
     }
 
+    /** Clear the one-shot auto-return flag once the screen has played the confirm. */
+    fun consumeSendConfirm() {
+        _state.value = _state.value.copy(sendConfirm = false)
+    }
+
+    private companion object {
+        const val NEXT_Q_INTERVAL_MS = 400L
+        const val NEXT_Q_POLLS = 20        // ~8s safety window
+        const val NEXT_Q_DONE_STREAK = 2   // menu gone ~0.8s => all questions answered
+    }
+
     /** Send arbitrary text immediately (used by the Reply button). */
     fun sendText(text: String, submit: Boolean = true) = send(text, submit)
 
@@ -240,7 +301,8 @@ class ThreadDetailViewModel(app: Application) : AndroidViewModel(app) {
                 repo.send(index, text, submit)
                 onOk()
                 // Suggestions were for the pre-send screen; drop them so nothing stale lingers.
-                _state.value = _state.value.copy(sending = false, error = null, suggestions = emptyList())
+                // sendConfirm is the one-shot that plays the confirm + auto-returns.
+                _state.value = _state.value.copy(sending = false, error = null, suggestions = emptyList(), sendConfirm = true)
                 refreshOnce(index)
             } catch (e: Exception) {
                 _state.value = _state.value.copy(sending = false, error = e.message ?: "send failed")
