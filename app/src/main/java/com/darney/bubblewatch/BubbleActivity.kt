@@ -1,9 +1,13 @@
 package com.darney.bubblewatch
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.wear.ambient.AmbientLifecycleObserver
 import com.darney.bubblewatch.ui.CoworkApp
 
@@ -15,6 +19,12 @@ import com.darney.bubblewatch.ui.CoworkApp
  * its own exit (long-press), and everything else uses swipe-to-dismiss navigation.
  */
 class BubbleActivity : ComponentActivity() {
+
+    // Re-post the persistent shortcut bubble once the user grants POST_NOTIFICATIONS.
+    private val requestNotifPermission =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            if (granted) PersistentBubble.show(this)
+        }
 
     private val ambientCallback = object : AmbientLifecycleObserver.AmbientLifecycleCallback {
         // Ambient = screen dimmed/asleep. Signal it app-wide so the background poll
@@ -33,6 +43,18 @@ class BubbleActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         lifecycle.addObserver(AmbientLifecycleObserver(this, ambientCallback))
+
+        // Pin a silent "🫧 Bubbles" shortcut in the notification stream so a tap always
+        // gets back into the app. Shows immediately if already permitted; on Wear OS 4
+        // (API 33+) request POST_NOTIFICATIONS first, then post from the callback.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) ==
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            PersistentBubble.show(this)
+        } else {
+            requestNotifPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
 
         // FLAG_KEEP_SCREEN_ON removed for pendant use: it pinned the display in
         // always-on ambient and was the single biggest battery drain. The watch now
