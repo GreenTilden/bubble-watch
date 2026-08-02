@@ -27,4 +27,7 @@ interface BridgeApi {
 
     @POST
     suspend fun summary(@Url url: String): SummaryResponseDto
+
+    @POST
+    suspend fun promptSummary(@Url url: String): SummaryResponseDto
 }

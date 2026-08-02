@@ -57,11 +57,13 @@ import com.darney.bubblewatch.ui.tick
 import kotlinx.coroutines.delay
 
 private val AMBER = Color(0xFFFFB300)
+private val CONTEXT_CUE = Color(0xFFAEC97E) // olive-green — the "what you're deciding" line
 
-// Always-present momentum replies (the hybrid safety net if the LLM call is slow
-// or fails). Short + fixed so they fit a 3-across row without clipping. Each is
-// staged into the draft, then fired by "Send draft".
-private val STATIC_REPLIES = listOf("continue", "go ahead", "explain")
+// Always-present momentum replies (the hybrid safety net if the LLM call is slow or
+// fails). Short + fixed so they fit a 2-across row without clipping. Each is staged
+// into the draft, then fired by "Send draft". ("explain" was swapped for the ⏎ Enter
+// key below, which acts on the terminal directly rather than staging text.)
+private val STATIC_REPLIES = listOf("continue", "go ahead")
 
 @Composable
 fun ThreadDetailScreen(
@@ -213,6 +215,19 @@ fun ThreadDetailScreen(
                         )
                     }
                 }
+                // Haiku "what you're being asked to decide" line, above the question —
+                // so you can pick without reading the whole tail. Auto-fetched per prompt.
+                if (state.promptSummary.isNotBlank() || state.promptSummaryLoading) {
+                    item(key = "psum") {
+                        Text(
+                            text = if (state.promptSummary.isNotBlank()) "▸ ${state.promptSummary}" else "▸ …",
+                            color = CONTEXT_CUE,
+                            fontSize = 12.sp,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                }
                 item(key = "q") {
                     Text(
                         text = "❓ ${prompt.question}".trim(),
@@ -244,9 +259,9 @@ fun ThreadDetailScreen(
 
             // 💡 button — suggestions are NEVER fetched automatically (saves the
             // Haiku call). Tap to pull them; tap again to re-fetch. Results render
-            // in the full-width stacked chips below.
+            // in the full-width stacked chips below. Full Chip = a real tap target.
             item(key = "sugbtn") {
-                CompactChip(
+                Chip(
                     onClick = { vm.requestSuggestions() },
                     label = { Text(if (state.suggestionsLoading) "💡 …" else "💡 Ideas", maxLines = 1) },
                     colors = ChipDefaults.secondaryChipColors(),
@@ -276,15 +291,15 @@ fun ThreadDetailScreen(
                 }
             }
 
-            // Static quick-reply row — always present (hybrid safety net). Short
-            // fixed phrases, so a 3-across CompactChip row fits without clipping.
+            // Static quick-reply row — always present (hybrid safety net). Two short
+            // phrases as full Chips (2-across) so they're comfortably tappable.
             item(key = "staticreplies") {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     STATIC_REPLIES.forEach { phrase ->
-                        CompactChip(
+                        Chip(
                             onClick = { vm.appendToDraft(phrase) },
                             label = { Text(phrase, maxLines = 1) },
                             colors = ChipDefaults.secondaryChipColors(),
@@ -292,6 +307,18 @@ fun ThreadDetailScreen(
                         )
                     }
                 }
+            }
+
+            // ⏎ Enter — presses Enter on the remote pane (confirm a prompt, submit the
+            // input line). Replaces the old "explain" quick-reply; acts on the terminal
+            // directly instead of staging draft text. Full-width so it's easy to hit.
+            item(key = "enterkey") {
+                Chip(
+                    onClick = { vm.sendKey("enter") },
+                    label = { Text("⏎ Enter") },
+                    colors = ChipDefaults.secondaryChipColors(),
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
 
             if (state.draft.isNotBlank()) {
@@ -330,39 +357,54 @@ fun ThreadDetailScreen(
                 )
             }
 
+            // 🛁 Clean context — its own full-width button (was a cramped 1/3 chip). One
+            // tap opens the confirm overlay; the overlay's "Do it" fires the destructive
+            // macro (COPY → CLEAR → PASTE → GO). Inert while a bath is already running.
+            item(key = "cleanctx") {
+                Chip(
+                    onClick = {
+                        if (state.bathStage != null) return@Chip
+                        bathConfirm = true
+                        vibrator.tick()
+                    },
+                    label = { Text("🛁 Clean context") },
+                    colors = ChipDefaults.secondaryChipColors(),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+
             // 🛁 context-bath renders as a centered overlay (see below), not an inline
             // list item — so the tub plays front-and-center instead of scrolling off.
 
-            // Terminal controls — act on the remote pane (these already work).
+            // Terminal controls — act on the remote pane. Bigger 2-across Chips so a
+            // stop/escape actually lands when you need it.
             item(key = "softkeys1") {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
-                    CompactChip(
+                    Chip(
                         onClick = { vm.sendKey("escape") },
                         label = { Text("Esc") },
                         colors = ChipDefaults.secondaryChipColors(),
                         modifier = Modifier.weight(1f),
                     )
-                    CompactChip(
+                    Chip(
                         onClick = { vm.sendKey("interrupt") },
-                        label = { Text("⏹") },
+                        label = { Text("⏹ Stop") },
                         colors = ChipDefaults.secondaryChipColors(),
                         modifier = Modifier.weight(1f),
                     )
                 }
             }
             // Draft / clipboard tools — act on the LOCAL draft, not the terminal.
-            // Copy: tail → watch clipboard (with ✓ feedback). Paste: clipboard →
-            // draft (no keyboard needed). Clr: empty the draft (what you actually
-            // want when composing — not a remote line-clear).
+            // Copy: tail → watch clipboard (with ✓ feedback). Paste: clipboard → draft.
             item(key = "drafttools") {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
-                    CompactChip(
+                    Chip(
                         onClick = {
                             clipboard.setText(AnnotatedString(state.lines.joinToString("\n")))
                             copied = true
@@ -371,25 +413,12 @@ fun ThreadDetailScreen(
                         colors = ChipDefaults.secondaryChipColors(),
                         modifier = Modifier.weight(1f),
                     )
-                    CompactChip(
+                    Chip(
                         onClick = {
                             clipboard.getText()?.text?.takeIf { it.isNotBlank() }
                                 ?.let { vm.appendToDraft(it) }
                         },
                         label = { Text("📥 Paste", maxLines = 1) },
-                        colors = ChipDefaults.secondaryChipColors(),
-                        modifier = Modifier.weight(1f),
-                    )
-                    // 🛁 Bath — context-compaction macro. One tap opens the confirm
-                    // overlay (destructive: it clears the session's context); the
-                    // overlay's "Do it" button actually fires it. Inert while running.
-                    CompactChip(
-                        onClick = {
-                            if (state.bathStage != null) return@CompactChip
-                            bathConfirm = true
-                            vibrator.tick()
-                        },
-                        label = { Text("🛁 Bath", maxLines = 1) },
                         colors = ChipDefaults.secondaryChipColors(),
                         modifier = Modifier.weight(1f),
                     )

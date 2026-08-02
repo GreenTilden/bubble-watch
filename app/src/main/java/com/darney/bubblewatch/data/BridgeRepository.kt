@@ -74,6 +74,12 @@ class BridgeRepository private constructor(context: Context) {
         runCatching { api.summary("${base()}/api/threads/$index/summary").summary }
             .getOrDefault("")
 
+    /** Menu-aware "what you're being asked to decide" line for a paused thread.
+     *  Swallows any failure to "" so the detail screen just shows the options. */
+    suspend fun promptSummary(index: Int): String =
+        runCatching { api.promptSummary("${base()}/api/threads/$index/prompt-summary").summary }
+            .getOrDefault("")
+
     companion object {
         @Volatile
         private var instance: BridgeRepository? = null

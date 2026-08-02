@@ -32,6 +32,10 @@ data class ThreadDetailUiState(
     // and when a new prompt / needs-input transition appears), not every tick.
     val suggestions: List<String> = emptyList(),
     val suggestionsLoading: Boolean = false,
+    // Menu-aware "what you're being asked to decide" line, auto-fetched when a
+    // prompt appears (cheap: the paused tail is static, so one Haiku call per prompt).
+    val promptSummary: String = "",
+    val promptSummaryLoading: Boolean = false,
     // Context-bath (🛁) progress. null = idle. Otherwise a short stage label the
     // screen renders as a live checkpoint line: COPY → CLEAR → PASTE → GO → done.
     val bathStage: String? = null,
@@ -51,6 +55,7 @@ class ThreadDetailViewModel(app: Application) : AndroidViewModel(app) {
 
     private var pollJob: Job? = null
     private var suggestJob: Job? = null
+    private var promptSummaryJob: Job? = null
 
     /** Begin polling tail + status for [index]. Safe to call repeatedly. */
     fun start(index: Int) {
@@ -100,6 +105,7 @@ class ThreadDetailViewModel(app: Application) : AndroidViewModel(app) {
                 lines = if (linesChanged) tail.lines else cur.lines,
                 prompt = if (promptChanged) tail.prompt else cur.prompt,
                 moreQuestions = if (promptChanged) false else cur.moreQuestions,
+                promptSummary = if (promptChanged) "" else cur.promptSummary,
                 // Meter from list metadata; keep last known when a poll misses it.
                 model = meta?.model ?: cur.model,
                 ctxTokens = meta?.ctxTokens ?: cur.ctxTokens,
@@ -107,6 +113,11 @@ class ThreadDetailViewModel(app: Application) : AndroidViewModel(app) {
                 costUsd = meta?.costUsd ?: cur.costUsd,
                 error = null,
             )
+            // A new menu appeared -> pull its decision summary; it vanished -> clear.
+            if (promptChanged) {
+                if (tail.prompt != null) fetchPromptSummary(index)
+                else _state.value = _state.value.copy(promptSummary = "", promptSummaryLoading = false)
+            }
         } catch (e: Exception) {
             _state.value = _state.value.copy(error = e.message ?: "request failed")
         }
@@ -131,6 +142,24 @@ class ThreadDetailViewModel(app: Application) : AndroidViewModel(app) {
             if (sug != cur.suggestions || cur.suggestionsLoading) {
                 _state.value = cur.copy(suggestions = sug, suggestionsLoading = false)
             }
+        }
+    }
+
+    /** Auto-fetch the menu-aware "what you're deciding" line when a prompt appears.
+     *  Off the poll path, cancels any prior fetch on a new question, never throws
+     *  (repo -> ""). Cheap: the paused tail is static, so it's one call per prompt. */
+    private fun fetchPromptSummary(index: Int) {
+        promptSummaryJob?.cancel()
+        promptSummaryJob = viewModelScope.launch {
+            _state.value = _state.value.copy(promptSummary = "", promptSummaryLoading = true)
+            val s = repo.promptSummary(index)
+            val cur = _state.value
+            // Apply only if a menu is still up, so a late result can't flash after
+            // the user already answered.
+            _state.value = if (cur.prompt != null)
+                cur.copy(promptSummary = s, promptSummaryLoading = false)
+            else
+                cur.copy(promptSummary = "", promptSummaryLoading = false)
         }
     }
 
@@ -161,13 +190,16 @@ class ThreadDetailViewModel(app: Application) : AndroidViewModel(app) {
                 val p = tail.prompt
                 when {
                     p != null && p != answered -> {
-                        // The next stacked question — present it and cue the user.
+                        // The next stacked question — present it, cue the user, and
+                        // pull a fresh "what you're deciding" line for it.
                         _state.value = _state.value.copy(
                             answering = false,
                             prompt = p,
                             lines = tail.lines,
                             moreQuestions = true,
+                            promptSummary = "",
                         )
+                        fetchPromptSummary(index)
                         return@launch
                     }
                     p == null -> {
@@ -180,6 +212,7 @@ class ThreadDetailViewModel(app: Application) : AndroidViewModel(app) {
                                 lines = tail.lines,
                                 moreQuestions = false,
                                 sendConfirm = true,
+                                promptSummary = "",
                             )
                             return@launch
                         }
