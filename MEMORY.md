@@ -10,8 +10,9 @@
   25-line tail window — fixed bridge-side in `_do_capture`. E2E voice loop was verified
   earlier the same day; both watches current.
 - **Current Focus**: real-world daily use; next dev work is whatever friction that surfaces.
-- **Blockers**: none. Note: the 0d06d6b ledger row is mislabeled `daliquot_1_solo`
-  (hook took sprint code from the calling session's context).
+- **Blockers**: none. (The `daliquot_1_solo` ledger mislabels — hook session-context
+  leak on 3 rows — were corrected in EllaBot via PUT on 2026-08-03; bubbles commits
+  post with no sprint_code until it has its own contract.)
 - **Last Updated**: 2026-08-03
 
 ## Project Identity
