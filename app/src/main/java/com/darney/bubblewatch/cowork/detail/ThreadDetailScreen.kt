@@ -51,6 +51,7 @@ import com.darney.bubblewatch.ui.KeeperIndicator
 import com.darney.bubblewatch.ui.KeeperMode
 import com.darney.bubblewatch.ui.SentCheck
 import com.darney.bubblewatch.ui.confirm
+import com.darney.bubblewatch.ui.pulse
 import com.darney.bubblewatch.ui.rememberVibrator
 import com.darney.bubblewatch.ui.rotaryScroll
 import com.darney.bubblewatch.ui.tick
@@ -544,6 +545,14 @@ fun ThreadDetailScreen(
                 stage.startsWith("🛁 GO") -> 3
                 stage.startsWith("✓") -> 4
                 else -> 0
+            }
+            // The four vibrates: one tick per soak stage as it starts, a firm
+            // double buzz on the ✓ (or on a ⚠ so a failure is also felt).
+            LaunchedEffect(stage) {
+                when {
+                    stage.startsWith("🛁") -> vibrator.pulse()
+                    else -> vibrator.confirm()
+                }
             }
             val bathScale by animateFloatAsState(
                 targetValue = 1f + step * 0.2f,

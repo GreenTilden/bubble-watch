@@ -296,6 +296,13 @@ class ThreadDetailViewModel(app: Application) : AndroidViewModel(app) {
      *
      * CAVEAT: the bridge collapses newlines to spaces on /send, so the re-seeded
      * tail lands as one space-joined line (documented/accepted behavior).
+     *
+     * The CLEAR stage is verified, not fire-and-forget: if the pane's Claude is
+     * mid-response, a typed "/clear" gets QUEUED as chat text instead of executing,
+     * and re-seeding would paste the tail into the uncleared context. So: Escape
+     * first (stops an in-flight response; harmless when idle), C-u (drop any
+     * half-typed draft so "/clear" lands alone), then confirm the old tail is
+     * actually gone before pasting — one retry, then abort without re-seeding.
      */
     fun contextBath() {
         val index = _state.value.index
@@ -304,13 +311,42 @@ class ThreadDetailViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 // Stage COPY: capture the current tail before we wipe context.
                 _state.value = _state.value.copy(bathStage = "🛁 COPY", error = null)
-                val captured = _state.value.lines.joinToString("\n")
+                val lines = _state.value.lines
+                val captured = lines.joinToString("\n")
+                // Sentinel for clear-verification: the most distinctive (longest)
+                // line of the old tail. If it survives /clear, nothing was cleared.
+                val sentinel = lines.map { it.trim() }
+                    .filter { it.length >= 12 }
+                    .maxByOrNull { it.length }
                 delay(200)
                 // Stage CLEAR: reset Claude Code's conversation context.
                 _state.value = _state.value.copy(bathStage = "🛁 CLEAR")
-                repo.send(index, "/clear", submit = true)
-                // Give Claude Code a beat to process /clear before we re-seed.
-                delay(600)
+                var cleared = false
+                for (attempt in 1..2) {
+                    repo.sendKey(index, "escape") // stop any in-flight response
+                    delay(300)
+                    repo.sendKey(index, "clear")  // C-u: wipe any leftover input draft
+                    delay(150)
+                    repo.send(index, "/clear", submit = true)
+                    // Give Claude Code a beat to process /clear before checking.
+                    delay(if (attempt == 1) 800L else 1500L)
+                    cleared = sentinel == null || !paneStillShows(index, sentinel)
+                    if (cleared) break
+                    _state.value = _state.value.copy(bathStage = "🛁 CLEAR retry")
+                }
+                if (!cleared) {
+                    // Do NOT paste the tail into a live, uncleared context — that
+                    // would grow the context the bath was meant to reset.
+                    _state.value = _state.value.copy(
+                        bathStage = "⚠ not cleared",
+                        error = "pane didn't clear — tail not re-seeded",
+                    )
+                    delay(2500)
+                    if (_state.value.bathStage == "⚠ not cleared") {
+                        _state.value = _state.value.copy(bathStage = null)
+                    }
+                    return@launch
+                }
                 // Stage PASTE: type the captured tail back in (no submit yet).
                 _state.value = _state.value.copy(bathStage = "🛁 PASTE")
                 repo.send(index, captured, submit = false)
@@ -339,6 +375,18 @@ class ThreadDetailViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
     }
+
+    /**
+     * True if the pane's visible tail still contains [sentinel] — i.e. /clear did
+     * not take. A failed read returns false (the destructive step already ran;
+     * don't wedge the bath on a transient network blip).
+     */
+    private suspend fun paneStillShows(index: Int, sentinel: String): Boolean =
+        try {
+            repo.tail(index, 40).lines.any { it.contains(sentinel) }
+        } catch (_: Exception) {
+            false
+        }
 
     fun appendToDraft(text: String) {
         val cur = _state.value.draft

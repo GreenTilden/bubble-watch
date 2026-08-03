@@ -28,6 +28,16 @@ fun Vibrator?.tick() {
     }
 }
 
+/** Single firm pulse — a macro stage landing (e.g. each 🛁 bath step). Stronger
+ *  than [tick] so a stage-per-second sequence is actually countable on the wrist. */
+fun Vibrator?.pulse() {
+    this ?: return
+    try {
+        vibrate(VibrationEffect.createOneShot(45, 170))
+    } catch (_: Exception) {
+    }
+}
+
 /** Firm double buzz — a committed action or an attention alert you shouldn't miss. */
 fun Vibrator?.confirm() {
     this ?: return
