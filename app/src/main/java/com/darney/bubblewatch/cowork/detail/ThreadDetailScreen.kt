@@ -243,14 +243,36 @@ fun ThreadDetailScreen(
                 // — i.e. exactly when you scroll to the bottom to accept a plan.
                 prompt.options.forEachIndexed { i, opt ->
                     item(key = "opt$i") {
+                        // A checkbox option TOGGLES in place; anything else (incl.
+                        // the action rows of a multi-select menu) answers directly.
+                        val isToggle = prompt.multiSelect && opt.checked != null
+                        val prefix = when (opt.checked) {
+                            true -> "☑ "
+                            false -> "☐ "
+                            null -> ""
+                        }
                         Chip(
-                            label = { Text("${opt.key}. ${opt.label}", maxLines = 2) },
-                            onClick = { vm.selectOption(opt.key) },
-                            colors = if (opt.selected) {
+                            label = { Text("${opt.key}. $prefix${opt.label}", maxLines = 2) },
+                            onClick = {
+                                if (isToggle) vm.toggleOption(opt.key) else vm.selectOption(opt.key)
+                            },
+                            colors = if (opt.selected || opt.checked == true) {
                                 ChipDefaults.primaryChipColors()
                             } else {
                                 ChipDefaults.secondaryChipColors()
                             },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                }
+                // Multi-select menus need an explicit submit — the digit taps above
+                // only toggle. This is the step a bare ⏎ can't do from the wrist.
+                if (prompt.multiSelect) {
+                    item(key = "submitmenu") {
+                        Chip(
+                            label = { Text("✔ Submit these") },
+                            onClick = { vm.submitMenu() },
+                            colors = ChipDefaults.primaryChipColors(),
                             modifier = Modifier.fillMaxWidth(),
                         )
                     }
@@ -312,13 +334,17 @@ fun ThreadDetailScreen(
             // ⏎ Enter — presses Enter on the remote pane (confirm a prompt, submit the
             // input line). Replaces the old "explain" quick-reply; acts on the terminal
             // directly instead of staging draft text. Full-width so it's easy to hit.
-            item(key = "enterkey") {
-                Chip(
-                    onClick = { vm.sendKey("enter") },
-                    label = { Text("⏎ Enter") },
-                    colors = ChipDefaults.secondaryChipColors(),
-                    modifier = Modifier.fillMaxWidth(),
-                )
+            // Hidden while a multi-select menu is up: there Enter only toggles the
+            // highlighted row — "✔ Submit these" (above) is the real submit.
+            if (state.prompt?.multiSelect != true) {
+                item(key = "enterkey") {
+                    Chip(
+                        onClick = { vm.sendKey("enter") },
+                        label = { Text("⏎ Enter") },
+                        colors = ChipDefaults.secondaryChipColors(),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
             }
 
             if (state.draft.isNotBlank()) {

@@ -180,6 +180,50 @@ class ThreadDetailViewModel(app: Application) : AndroidViewModel(app) {
                 _state.value = _state.value.copy(answering = false, error = e.message ?: "send failed")
                 return@launch
             }
+            watchAfterAnswer(index, answered)
+        }
+    }
+
+    /** Toggle one checkbox of a multi-select menu: send the digit, then refresh the
+     *  same menu in place (it stays up — submission is the separate ✔ button). */
+    fun toggleOption(key: String) {
+        val index = _state.value.index
+        if (index < 0) return
+        viewModelScope.launch {
+            try {
+                repo.send(index, key, submit = false)
+                delay(600)
+                val tail = repo.tail(index)
+                _state.value = _state.value.copy(prompt = tail.prompt, lines = tail.lines, error = null)
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(error = e.message ?: "toggle failed")
+            }
+        }
+    }
+
+    /** The ✔ Submit-these button of a multi-select menu. The bridge Tabs to the
+     *  review tab and confirms; if an unanswered question renders instead, the
+     *  shared watch loop presents it just like a stacked single-select. */
+    fun submitMenu() {
+        val index = _state.value.index
+        if (index < 0) return
+        val answered = _state.value.prompt
+        viewModelScope.launch {
+            _state.value = _state.value.copy(answering = true, error = null, suggestions = emptyList())
+            try {
+                repo.submitMenu(index)
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(answering = false, error = e.message ?: "submit failed")
+                return@launch
+            }
+            watchAfterAnswer(index, answered)
+        }
+    }
+
+    /** Shared post-answer watch: poll for the next stacked question (a different
+     *  menu) or completion (menu stays gone), then confirm + return. */
+    private suspend fun watchAfterAnswer(index: Int, answered: PromptDto?) {
+        run {
             // Poll for the next question (a different menu) or completion (menu gone).
             var nullStreak = 0
             var latestLines = _state.value.lines
@@ -200,7 +244,7 @@ class ThreadDetailViewModel(app: Application) : AndroidViewModel(app) {
                             promptSummary = "",
                         )
                         fetchPromptSummary(index)
-                        return@launch
+                        return@run
                     }
                     p == null -> {
                         nullStreak++
@@ -214,7 +258,7 @@ class ThreadDetailViewModel(app: Application) : AndroidViewModel(app) {
                                 sendConfirm = true,
                                 promptSummary = "",
                             )
-                            return@launch
+                            return@run
                         }
                     }
                     else -> nullStreak = 0 // same menu still rendering; keep waiting
