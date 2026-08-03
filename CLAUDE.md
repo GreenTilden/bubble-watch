@@ -27,7 +27,8 @@ Sideload **directly from fenton** over wireless debugging (watch paired to fento
 keys 2026-07-31; no daptop needed). The port changes per session — discover it:
 ```bash
 A=~/Android/Sdk/platform-tools/adb
-$A mdns services            # Pixel Watch 3 = product:luna, e.g. 192.168.0.18:PORT
+$A mdns services            # Pixel Watch 3 (wrist) = product:luna @ 192.168.0.18:PORT
+                            # Pixel Watch 2 (pendant) @ 192.168.0.145:PORT — update BOTH
 $A connect 192.168.0.18:PORT
 $A -s 192.168.0.18:PORT install -r app/build/outputs/apk/debug/app-debug.apk
 ```
