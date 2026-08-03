@@ -1,10 +1,13 @@
 # bubble-watch (Cowork Watch) — Memory
 
 ## Session Status
-- **Status**: Active — Cowork co-pilot feature added 2026-07-31; builds clean, APK sideload pending.
-- **Current Focus**: End-to-end test on the Pixel Watch (sideload + configure + voice loop).
-- **Blockers**: none (sideload needs physical watch pairing from daptop).
-- **Last Updated**: 2026-07-31
+- **Status**: Active — polish wave landed 2026-08-02 (splash, stacked-question walk-through,
+  decision summary + bigger buttons, ambient retreat, persistent-notif fix through 1833e08).
+  APK at `app/build/outputs/apk/debug/app-debug.apk` is built from 1833e08 (gradle UP-TO-DATE
+  verified 2026-08-03) — sideload pending.
+- **Current Focus**: End-to-end test on the Pixel Watch (sideload from daptop + configure + voice loop).
+- **Blockers**: none (sideload needs physical watch pairing from daptop; bridge verified up 2026-08-03).
+- **Last Updated**: 2026-08-03
 
 ## Project Identity
 A Wear OS app (`com.darney.bubblewatch`) that started as a toddler bubble-popping toy and
