@@ -23,8 +23,16 @@ export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
 cd ~/projects/bubble-watch && ./gradlew assembleDebug
 # APK: app/build/outputs/apk/debug/app-debug.apk
 ```
-Sideload from **daptop** (watch is paired there) with the Windows SDK adb:
-`adb install -r app-debug.apk`.
+Sideload **directly from fenton** over wireless debugging (watch paired to fenton's adb
+keys 2026-07-31; no daptop needed). The port changes per session — discover it:
+```bash
+A=~/Android/Sdk/platform-tools/adb
+$A mdns services            # Pixel Watch 3 = product:luna, e.g. 192.168.0.18:PORT
+$A connect 192.168.0.18:PORT
+$A -s 192.168.0.18:PORT install -r app/build/outputs/apk/debug/app-debug.apk
+```
+If connect is refused, wireless debugging is off on the watch — Settings → Developer
+options → Wireless debugging (pairing already done; just toggle it on).
 
 ## Key Files
 - `BubbleActivity.kt` — single activity; ambient + keep-screen-on; hosts `CoworkApp`.

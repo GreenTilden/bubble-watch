@@ -1,12 +1,11 @@
 # bubble-watch (Cowork Watch) — Memory
 
 ## Session Status
-- **Status**: Active — polish wave landed 2026-08-02 (splash, stacked-question walk-through,
-  decision summary + bigger buttons, ambient retreat, persistent-notif fix through 1833e08).
-  APK at `app/build/outputs/apk/debug/app-debug.apk` is built from 1833e08 (gradle UP-TO-DATE
-  verified 2026-08-03) — sideload pending.
-- **Current Focus**: End-to-end test on the Pixel Watch (sideload from daptop + configure + voice loop).
-- **Blockers**: none (sideload needs physical watch pairing from daptop; bridge verified up 2026-08-03).
+- **Status**: Active — 1833e08 build SIDELOADED 2026-08-03 (v2.1, direct from fenton over
+  wireless adb — see CLAUDE.md Build section; daptop no longer in the loop) and launched.
+- **Current Focus**: End-to-end voice loop test on the wrist (threads → detail → voice
+  Reply → lands in a `dev:1.*` tmux pane).
+- **Blockers**: none (bridge verified up 2026-08-03; watch reachable at 192.168.0.18).
 - **Last Updated**: 2026-08-03
 
 ## Project Identity
@@ -25,6 +24,7 @@ the idle/ambient screen shown between prompts.
   (bubbles) → settings. Networking via Retrofit/OkHttp with absolute @Url so the base can
   change at runtime; config in DataStore. Voice via RemoteInput (`wear-input`).
 - **Build**: on fenton, JDK 17 + Android SDK at `/home/darney/Android/Sdk`,
-  `./gradlew assembleDebug`. Sideload from daptop (Windows adb) — watch has no USB port.
+  `./gradlew assembleDebug`. Sideload from fenton over wireless adb (paired 2026-07-31;
+  `adb mdns services` → connect → install; watch has no USB port). Flow in CLAUDE.md.
 - **Toddler-lock gotcha**: `BubbleScreen(toddlerLock=true)` = consume-all/no-exit (kid mode).
   Cowork uses `toddlerLock=false`. Do not re-add a global Back block.
