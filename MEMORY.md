@@ -3,9 +3,12 @@
 ## Session Status
 - **Status**: Active — 1833e08 build SIDELOADED 2026-08-03 (v2.1, direct from fenton over
   wireless adb — see CLAUDE.md Build section; daptop no longer in the loop) and launched.
-- **Current Focus**: End-to-end voice loop test on the wrist (threads → detail → voice
-  Reply → lands in a `dev:1.*` tmux pane).
-- **Blockers**: none (bridge verified up 2026-08-03; watch reachable at 192.168.0.18).
+- **Milestone**: **E2E voice loop VERIFIED 2026-08-03** — watch dictation → bridge
+  `POST /threads/1/send` → tmux pane → Claude session replied, observed live from inside
+  the target session itself. `/suggest` + `/summary` also confirmed working (200s, from
+  the Watch 2 pendant). Both watches on v2.1.
+- **Current Focus**: real-world daily use; next dev work is whatever friction that surfaces.
+- **Blockers**: none.
 - **Last Updated**: 2026-08-03
 
 ## Project Identity
