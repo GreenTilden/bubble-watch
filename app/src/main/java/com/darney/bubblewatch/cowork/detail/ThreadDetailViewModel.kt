@@ -45,6 +45,7 @@ data class ThreadDetailUiState(
     val ctxTokens: Int? = null,
     val ctxTier: String? = null,
     val costUsd: Double? = null,
+    val spendTokens: Int? = null,
 )
 
 class ThreadDetailViewModel(app: Application) : AndroidViewModel(app) {
@@ -111,6 +112,7 @@ class ThreadDetailViewModel(app: Application) : AndroidViewModel(app) {
                 ctxTokens = meta?.ctxTokens ?: cur.ctxTokens,
                 ctxTier = meta?.ctxTier ?: cur.ctxTier,
                 costUsd = meta?.costUsd ?: cur.costUsd,
+                spendTokens = meta?.spendTokens ?: cur.spendTokens,
                 error = null,
             )
             // A new menu appeared -> pull its decision summary; it vanished -> clear.

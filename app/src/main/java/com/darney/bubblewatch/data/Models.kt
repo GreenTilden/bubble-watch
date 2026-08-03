@@ -18,6 +18,7 @@ data class ThreadDto(
     val ctxTokens: Int? = null,
     val ctxTier: String? = null,
     val costUsd: Double? = null,
+    val spendTokens: Int? = null,
 ) {
     val statusEnum: ThreadStatus
         get() = when (status) {

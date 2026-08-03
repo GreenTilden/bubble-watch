@@ -160,9 +160,9 @@ fun ThreadDetailScreen(
                 }
             }
 
-            // Per-thread TX meter under the title: context tokens + cost + tier,
-            // colored by pressure so a HARD/high-$ session is obvious on entry.
-            meterLabel(state.ctxTokens, state.costUsd)?.let { m ->
+            // Per-thread TX meter under the title: context tokens + session token
+            // spend + tier, colored by pressure so a HARD session is obvious on entry.
+            meterLabel(state.ctxTokens, state.spendTokens)?.let { m ->
                 item(key = "meter") {
                     Text(
                         text = m + (state.ctxTier?.let { " · $it" } ?: ""),

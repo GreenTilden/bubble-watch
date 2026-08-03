@@ -72,11 +72,16 @@ fun meterColor(tier: String?, tokens: Int?): Color = when {
     else -> GREEN
 }
 
-/** Compact meter string like "532k · $29.08"; null when no meter data is present. */
-fun meterLabel(tokens: Int?, cost: Double?): String? {
+/** Humanize a token count: 812k below a million, 4.2M above. */
+private fun tok(n: Int): String =
+    if (n >= 1_000_000) String.format("%.1fM", n / 1_000_000.0) else "${n / 1000}k"
+
+/** Compact meter string like "134k · Σ4.2M" (context · session token spend);
+ *  null when no meter data is present. Tokens only — no dollars on the wrist. */
+fun meterLabel(tokens: Int?, spend: Int?): String? {
     val parts = mutableListOf<String>()
-    tokens?.let { parts += "${it / 1000}k" }
-    cost?.let { parts += String.format("$%.2f", it) }
+    tokens?.let { parts += tok(it) }
+    spend?.let { parts += "Σ${tok(it)}" }
     return if (parts.isEmpty()) null else parts.joinToString(" · ")
 }
 
@@ -258,14 +263,14 @@ private fun ThreadChip(thread: ThreadDto, onClick: () -> Unit) {
     val dotColor = if (thread.hasPrompt) GREEN else statusColor(thread.statusEnum)
     val sub = if (thread.hasPrompt) "tap to answer"
         else thread.statusEnum.name.replace('_', ' ').lowercase()
-    val meter = meterLabel(thread.ctxTokens, thread.costUsd)
+    val meter = meterLabel(thread.ctxTokens, thread.spendTokens)
     Chip(
         label = { Text(label, maxLines = 2) },
         secondaryLabel = {
             Column {
                 Text(sub, maxLines = 1)
-                // Per-thread TX meter: context tokens + cost, colored by pressure so a
-                // runaway (HARD/high-$) session is obvious at a glance. Below, not aside.
+                // Per-thread TX meter: context tokens + session token spend, colored by
+                // pressure so a runaway (HARD-tier) session is obvious at a glance.
                 if (meter != null) {
                     Text(
                         text = meter,
@@ -294,7 +299,7 @@ private fun WorkingRow(thread: ThreadDto, summary: String?) {
         thread.statusEnum == ThreadStatus.WORKING -> "working…"
         else -> thread.statusEnum.name.replace('_', ' ').lowercase()
     }
-    val meter = meterLabel(thread.ctxTokens, thread.costUsd)
+    val meter = meterLabel(thread.ctxTokens, thread.spendTokens)
     Row(
         modifier = Modifier
             .fillMaxWidth()
