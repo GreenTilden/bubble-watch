@@ -1,8 +1,14 @@
 # bubble-watch (Cowork Watch) — Memory
 
 ## Session Status
-- **Status**: Active — 0d06d6b build SIDELOADED to BOTH watches 2026-08-03 (multi-select
-  support; bridge counterpart bubble-wand a674f73, service restarted).
+- **Status**: Active — a27e166 build (verified 🛁 CLEAR + 4 stage vibrates + Σ spend meter
+  7c0a6eb) SIDELOADED to Watch 3 2026-08-03 evening and **VERIFIED working on-wrist**.
+  **Pendant still on 0d06d6b** — push a27e166 next time it's charged/awake (fenton
+  wireless adb; watch may Wi-Fi-doze — have Darren open the Wireless-debugging screen).
+- **Bath hardening (a27e166)**: /clear was fire-and-forget — mid-response it QUEUED as a
+  chat message and the tail re-seeded into uncleared context (reproduced in scratch tmux).
+  Now: Escape + C-u first, sentinel-verify old tail gone before paste, one retry, else
+  "⚠ not cleared" abort. Per-stage 45ms pulses + ✓/⚠ double-buzz (`Haptics.pulse()`).
 - **Milestone**: **Multi-select menus VERIFIED from the wrist 2026-08-03** — ☐/☑ toggle
   chips + "✔ Submit these" → bridge `/submit-menu` (Tab → review tab → "Submit answers"),
   driven live from the Watch 3 against a real AskUserQuestion dialog. Root cause of
