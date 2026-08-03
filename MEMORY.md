@@ -1,14 +1,17 @@
 # bubble-watch (Cowork Watch) — Memory
 
 ## Session Status
-- **Status**: Active — 1833e08 build SIDELOADED 2026-08-03 (v2.1, direct from fenton over
-  wireless adb — see CLAUDE.md Build section; daptop no longer in the loop) and launched.
-- **Milestone**: **E2E voice loop VERIFIED 2026-08-03** — watch dictation → bridge
-  `POST /threads/1/send` → tmux pane → Claude session replied, observed live from inside
-  the target session itself. `/suggest` + `/summary` also confirmed working (200s, from
-  the Watch 2 pendant). Both watches on v2.1.
+- **Status**: Active — 0d06d6b build SIDELOADED to BOTH watches 2026-08-03 (multi-select
+  support; bridge counterpart bubble-wand a674f73, service restarted).
+- **Milestone**: **Multi-select menus VERIFIED from the wrist 2026-08-03** — ☐/☑ toggle
+  chips + "✔ Submit these" → bridge `/submit-menu` (Tab → review tab → "Submit answers"),
+  driven live from the Watch 3 against a real AskUserQuestion dialog. Root cause of
+  "no tap-to-answer on fresh sessions" was trailing blank pane rows swallowing the
+  25-line tail window — fixed bridge-side in `_do_capture`. E2E voice loop was verified
+  earlier the same day; both watches current.
 - **Current Focus**: real-world daily use; next dev work is whatever friction that surfaces.
-- **Blockers**: none.
+- **Blockers**: none. Note: the 0d06d6b ledger row is mislabeled `daliquot_1_solo`
+  (hook took sprint code from the calling session's context).
 - **Last Updated**: 2026-08-03
 
 ## Project Identity
