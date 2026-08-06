@@ -25,6 +25,18 @@ interface BridgeApi {
     @POST
     suspend fun submitMenu(@Url url: String): SubmitMenuDto
 
+    /**
+     * Start a context wash. Takes NO body — a wash has exactly one meaning, and a
+     * body would invite the client to specify how to type into a live session.
+     * Returns 202 immediately; poll [washStatus] for the stage. The bridge runs it
+     * asynchronously precisely so this call cannot outlive OkHttp's 15s callTimeout.
+     */
+    @POST
+    suspend fun startWash(@Url url: String): WashStartDto
+
+    @GET
+    suspend fun washStatus(@Url url: String): WashStatusDto
+
     @POST
     suspend fun suggest(@Url url: String): SuggestResponseDto
 

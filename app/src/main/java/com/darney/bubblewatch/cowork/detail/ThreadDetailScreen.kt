@@ -167,7 +167,7 @@ fun ThreadDetailScreen(
                 item(key = "meter") {
                     Text(
                         text = m + (state.ctxTier?.let { " · $it" } ?: ""),
-                        color = meterColor(state.ctxTier, state.ctxTokens),
+                        color = meterColor(state.ctxPressure, state.ctxTier, state.ctxTokens),
                         fontSize = 11.sp,
                         textAlign = TextAlign.Center,
                         modifier = Modifier.fillMaxWidth(),

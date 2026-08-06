@@ -5,6 +5,8 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.darney.bubblewatch.AmbientState
 import com.darney.bubblewatch.data.BridgeRepository
+import com.darney.bubblewatch.data.CtxPressure
+import com.darney.bubblewatch.data.WashStatusDto
 import com.darney.bubblewatch.data.PromptDto
 import com.darney.bubblewatch.data.ThreadStatus
 import kotlinx.coroutines.Job
@@ -44,6 +46,8 @@ data class ThreadDetailUiState(
     val model: String? = null,
     val ctxTokens: Int? = null,
     val ctxTier: String? = null,
+    // Operator pressure from the bridge; null means an older bridge, not "fine".
+    val ctxPressure: CtxPressure? = null,
     val costUsd: Double? = null,
     val spendTokens: Int? = null,
 )
@@ -111,6 +115,7 @@ class ThreadDetailViewModel(app: Application) : AndroidViewModel(app) {
                 model = meta?.model ?: cur.model,
                 ctxTokens = meta?.ctxTokens ?: cur.ctxTokens,
                 ctxTier = meta?.ctxTier ?: cur.ctxTier,
+                ctxPressure = meta?.pressureOrNull ?: cur.ctxPressure,
                 costUsd = meta?.costUsd ?: cur.costUsd,
                 spendTokens = meta?.spendTokens ?: cur.spendTokens,
                 error = null,
@@ -288,78 +293,81 @@ class ThreadDetailViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
-     * Context-bath macro (🛁), watch-orchestrated with a visible per-stage
-     * checkpoint. Destructive to conversation context, so the screen arms this
-     * behind a confirm tap before calling it. Runs COPY → CLEAR → /clear settle →
-     * PASTE → GO, updating [ThreadDetailUiState.bathStage] at each step so the user
-     * can watch it happen. Failures surface via [error] and reset the bath state.
+     * Context-bath macro (🛁). The watch now ASKS; the bridge does the work.
      *
-     * CAVEAT: the bridge collapses newlines to spaces on /send, so the re-seeded
-     * tail lands as one space-joined line (documented/accepted behavior).
+     * This used to be orchestrated here: capture the tail, send Escape / C-u /
+     * "/clear", poll to verify, then PASTE THE WHOLE TAIL BACK. All of that moved
+     * server-side, for three reasons that are worth keeping written down:
      *
-     * The CLEAR stage is verified, not fire-and-forget: if the pane's Claude is
-     * mid-response, a typed "/clear" gets QUEUED as chat text instead of executing,
-     * and re-seeding would paste the tail into the uncleared context. So: Escape
-     * first (stops an in-flight response; harmless when idle), C-u (drop any
-     * half-typed draft so "/clear" lands alone), then confirm the old tail is
-     * actually gone before pasting — one retry, then abort without re-seeding.
+     *  1. The re-paste is GONE, with no fallback. It round-tripped full pane
+     *     content through this watch and back, and — because the bridge collapses
+     *     newlines on /send — it landed as one space-joined line. The bridge now
+     *     re-seeds with a configured slash-command instead. Net effect: this
+     *     screen no longer handles pane content at all.
+     *  2. A wash cannot be watch-driven anyway once it is automatic: the polling
+     *     loop suspends whenever the screen goes ambient, and the watch is off the
+     *     wrist half the day. Bridge-side is what makes automation a config flip
+     *     rather than a rewrite.
+     *  3. The guards (pane-command allowlist, identity re-check, clear
+     *     verification, the two-part autocomplete guard) belong next to the code
+     *     that presses the keys, not one network hop away.
+     *
+     * Failures still surface AT the bath indicator, because that is where the user
+     * is looking. The confirm-tap gate on the screen is unchanged.
      */
     fun contextBath() {
         val index = _state.value.index
         if (index < 0) return
         viewModelScope.launch {
             try {
-                // Stage COPY: capture the current tail before we wipe context.
-                _state.value = _state.value.copy(bathStage = "🛁 COPY", error = null)
-                val lines = _state.value.lines
-                val captured = lines.joinToString("\n")
-                // Sentinel for clear-verification: the most distinctive (longest)
-                // line of the old tail. If it survives /clear, nothing was cleared.
-                val sentinel = lines.map { it.trim() }
-                    .filter { it.length >= 12 }
-                    .maxByOrNull { it.length }
-                delay(200)
-                // Stage CLEAR: reset Claude Code's conversation context.
-                _state.value = _state.value.copy(bathStage = "🛁 CLEAR")
-                var cleared = false
-                for (attempt in 1..2) {
-                    repo.sendKey(index, "escape") // stop any in-flight response
-                    delay(300)
-                    repo.sendKey(index, "clear")  // C-u: wipe any leftover input draft
-                    delay(150)
-                    repo.send(index, "/clear", submit = true)
-                    // Give Claude Code a beat to process /clear before checking.
-                    delay(if (attempt == 1) 800L else 1500L)
-                    cleared = sentinel == null || !paneStillShows(index, sentinel)
-                    if (cleared) break
-                    _state.value = _state.value.copy(bathStage = "🛁 CLEAR retry")
+                _state.value = _state.value.copy(bathStage = "🛁 …", error = null)
+                val started = repo.startWash(index)
+
+                // Poll the stage. 400ms is fast enough to feel live on a wrist and
+                // slow enough not to hammer the bridge; the cap is a backstop so a
+                // wedged wash cannot spin this coroutine forever.
+                var last: WashStatusDto? = null
+                for (tick in 1..75) {                 // ~30s ceiling
+                    delay(400)
+                    last = runCatching { repo.washStatus(index, started.washId) }.getOrNull()
+                    _state.value = _state.value.copy(bathStage = stageGlyph(last?.stage))
+                    if (last?.stage == "DONE") break
                 }
-                if (!cleared) {
-                    // Do NOT paste the tail into a live, uncleared context — that
-                    // would grow the context the bath was meant to reset.
-                    _state.value = _state.value.copy(
-                        bathStage = "⚠ not cleared",
-                        error = "pane didn't clear — tail not re-seeded",
-                    )
-                    delay(2500)
-                    if (_state.value.bathStage == "⚠ not cleared") {
+
+                when (last?.outcome) {
+                    "ok" -> {
+                        _state.value = _state.value.copy(
+                            bathStage = "✓ context reset", suggestions = emptyList())
+                        refreshOnce(index)
+                        delay(1500)
+                        if (_state.value.bathStage == "✓ context reset") {
+                            _state.value = _state.value.copy(bathStage = null)
+                        }
+                    }
+                    // Cleared but not re-seeded is a REAL, distinct outcome, not a
+                    // failure: this repo has no re-seed command or cannot satisfy
+                    // its probe. Saying "✓ cleared" rather than "✓ context reset"
+                    // is the honest difference.
+                    "cleared_not_reseeded" -> {
+                        _state.value = _state.value.copy(
+                            bathStage = "✓ cleared", suggestions = emptyList())
+                        refreshOnce(index)
+                        delay(1800)
+                        if (_state.value.bathStage == "✓ cleared") {
+                            _state.value = _state.value.copy(bathStage = null)
+                        }
+                    }
+                    else -> {
+                        _state.value = _state.value.copy(
+                            bathStage = if (last?.outcome == "blocked") "⚠ blocked" else "⚠ not cleared",
+                            error = if (last?.outcome == "blocked")
+                                "a guard refused this wash"
+                            else
+                                "pane didn't clear — nothing was re-seeded",
+                        )
+                        delay(2500)
                         _state.value = _state.value.copy(bathStage = null)
                     }
-                    return@launch
-                }
-                // Stage PASTE: type the captured tail back in (no submit yet).
-                _state.value = _state.value.copy(bathStage = "🛁 PASTE")
-                repo.send(index, captured, submit = false)
-                delay(200)
-                // Stage GO: press Enter to submit the re-seeded context.
-                _state.value = _state.value.copy(bathStage = "🛁 GO")
-                repo.sendKey(index, "enter")
-                // Done — brief confirmation, drop any stale suggestions, refresh.
-                _state.value = _state.value.copy(bathStage = "✓ context reset", suggestions = emptyList())
-                refreshOnce(index)
-                delay(1500)
-                if (_state.value.bathStage == "✓ context reset") {
-                    _state.value = _state.value.copy(bathStage = null)
                 }
             } catch (e: Exception) {
                 // Surface the failure AT the bath indicator — the user is watching the
@@ -376,17 +384,13 @@ class ThreadDetailViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /**
-     * True if the pane's visible tail still contains [sentinel] — i.e. /clear did
-     * not take. A failed read returns false (the destructive step already ran;
-     * don't wedge the bath on a transient network blip).
-     */
-    private suspend fun paneStillShows(index: Int, sentinel: String): Boolean =
-        try {
-            repo.tail(index, 40).lines.any { it.contains(sentinel) }
-        } catch (_: Exception) {
-            false
-        }
+    private fun stageGlyph(stage: String?): String = when (stage) {
+        "QUEUED" -> "🛁 …"
+        "CLEAR" -> "🛁 CLEAR"
+        "VERIFY" -> "🛁 VERIFY"
+        "RESEED" -> "🛁 RESEED"
+        else -> "🛁 …"
+    }
 
     fun appendToDraft(text: String) {
         val cur = _state.value.draft

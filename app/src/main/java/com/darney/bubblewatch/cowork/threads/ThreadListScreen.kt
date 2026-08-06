@@ -41,6 +41,7 @@ import androidx.wear.compose.material.TimeText
 import androidx.wear.compose.material.Vignette
 import androidx.wear.compose.material.VignettePosition
 import com.darney.bubblewatch.AmbientState
+import com.darney.bubblewatch.data.CtxPressure
 import com.darney.bubblewatch.data.ThreadDto
 import com.darney.bubblewatch.data.ThreadStatus
 import kotlinx.coroutines.flow.first
@@ -64,9 +65,22 @@ fun statusColor(status: ThreadStatus): Color = when (status) {
     else -> GREY
 }
 
-/** Color the per-thread TX meter by pressure: red at the HARD tier (or very high
- *  context), amber as it climbs, green when there's headroom. Glanceable hygiene. */
-fun meterColor(tier: String?, tokens: Int?): Color = when {
+/** Color the per-thread TX meter by OPERATOR pressure: red at hard, amber at soft,
+ *  green when there's headroom. Glanceable hygiene.
+ *
+ *  This used to read `tier == "HARD" || tokens >= 400_000`, which was not merely
+ *  unwired — it was calibrated to the wrong policy. The vendor's tier only appears
+ *  near its OWN ~1M-context limit, and 400k is ~2.7x past the operator's actual
+ *  hard stop of 150k, so the meter stayed green through the entire range where
+ *  breaking the session was the highest-value thing to do. Pressure is now
+ *  computed by the bridge against thresholds the operator sets.
+ *
+ *  `tier`/`tokens` remain as a fallback for a bridge too old to send ctxPressure —
+ *  a watch that silently showed nothing would be worse than an imperfect tint. */
+fun meterColor(pressure: CtxPressure?, tier: String?, tokens: Int?): Color = when {
+    pressure == CtxPressure.HARD -> RED
+    pressure == CtxPressure.SOFT -> AMBER
+    pressure == CtxPressure.NONE -> GREEN
     tier?.equals("HARD", ignoreCase = true) == true -> RED
     (tokens ?: 0) >= 400_000 -> AMBER
     else -> GREEN
@@ -274,7 +288,7 @@ private fun ThreadChip(thread: ThreadDto, onClick: () -> Unit) {
                 if (meter != null) {
                     Text(
                         text = meter,
-                        color = meterColor(thread.ctxTier, thread.ctxTokens),
+                        color = meterColor(thread.pressureOrNull, thread.ctxTier, thread.ctxTokens),
                         fontSize = 11.sp,
                         maxLines = 1,
                     )
@@ -314,7 +328,7 @@ private fun WorkingRow(thread: ThreadDto, summary: String?) {
             if (meter != null) {
                 Text(
                     text = meter,
-                    color = meterColor(thread.ctxTier, thread.ctxTokens),
+                    color = meterColor(thread.pressureOrNull, thread.ctxTier, thread.ctxTokens),
                     fontSize = 11.sp,
                     maxLines = 1,
                 )

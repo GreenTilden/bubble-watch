@@ -4,6 +4,9 @@ package com.darney.bubblewatch.data
 
 enum class ThreadStatus { NEEDS_INPUT, WORKING, IDLE, UNKNOWN }
 
+/** Operator context pressure, computed by the bridge against thresholds you set. */
+enum class CtxPressure { NONE, SOFT, HARD }
+
 data class ThreadDto(
     val index: Int,
     val pane: String,
@@ -13,13 +16,35 @@ data class ThreadDto(
     val title: String,
     val label: String,
     val hasPrompt: Boolean = false,
+    // Durable pane identity. The bridge computed these for a while before it
+    // DECLARED them, so they were silently dropped on the way out — they only
+    // started arriving with the pressure work.
+    val paneId: String? = null,
+    val repo: String? = null,
     // Claude Code status-bar meter (per pane); null when the status line was not visible.
     val model: String? = null,
     val ctxTokens: Int? = null,
+    // The rendering step behind ctxTokens ("107k" -> 107000 at resolution 1000).
+    // Never report a delta smaller than this as an improvement.
+    val ctxResolution: Int? = null,
     val ctxTier: String? = null,
+    // Operator pressure, computed bridge-side: NONE | SOFT | HARD.
+    // NOT ctxTier — the vendor only emits a tier near its own ~1M limit, so real
+    // sessions carry none and a tier-driven meter never lights when it matters.
+    val ctxPressure: String? = null,
     val costUsd: Double? = null,
     val spendTokens: Int? = null,
 ) {
+    /** Null when the bridge sent no pressure at all — an older bridge, not "no
+     *  pressure". Callers fall back rather than render a confident green. */
+    val pressureOrNull: CtxPressure?
+        get() = when (ctxPressure) {
+            "HARD" -> CtxPressure.HARD
+            "SOFT" -> CtxPressure.SOFT
+            "NONE" -> CtxPressure.NONE
+            else -> null
+        }
+
     val statusEnum: ThreadStatus
         get() = when (status) {
             "NEEDS_INPUT" -> ThreadStatus.NEEDS_INPUT
@@ -30,6 +55,17 @@ data class ThreadDto(
 }
 
 data class ThreadsDto(val threads: List<ThreadDto>)
+
+/** 202 response from POST /api/threads/{i}/wash. */
+data class WashStartDto(val washId: String, val stage: String = "QUEUED")
+
+/** GET /api/threads/{i}/wash/{washId} — the wash's current stage. */
+data class WashStatusDto(
+    val washId: String,
+    val stage: String,              // QUEUED | CLEAR | VERIFY | RESEED | DONE
+    val outcome: String? = null,    // ok | cleared_not_reseeded | failed | blocked
+    val reseed: String? = null,     // command | none
+)
 
 /** A single tappable option in a Claude Code interactive menu. */
 data class PromptOptionDto(

@@ -68,6 +68,13 @@ class BridgeRepository private constructor(context: Context) {
     suspend fun submitMenu(index: Int): SubmitMenuDto =
         api.submitMenu("${base()}/api/threads/$index/submit-menu")
 
+    /** Ask the bridge to wash a pane. The bridge owns every guard and keystroke. */
+    suspend fun startWash(index: Int): WashStartDto =
+        api.startWash("${base()}/api/threads/$index/wash")
+
+    suspend fun washStatus(index: Int, washId: String): WashStatusDto =
+        api.washStatus("${base()}/api/threads/$index/wash/$washId")
+
     /** Momentum suggestions. Swallows any failure to [] so the VM never error-handles them. */
     suspend fun suggest(index: Int): List<String> =
         runCatching { api.suggest("${base()}/api/threads/$index/suggest").suggestions }
