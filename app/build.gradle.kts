@@ -13,12 +13,12 @@ val hasReleaseKeystore = localProps.getProperty("RELEASE_STORE_FILE") != null
 
 android {
     namespace = "com.darney.bubblewatch"
-    compileSdk = 34
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "com.darney.bubblewatch"
         minSdk = 30
-        targetSdk = 34
+        targetSdk = 35
         versionCode = 3
         versionName = "2.1"
     }
@@ -79,6 +79,7 @@ dependencies {
     implementation("androidx.core:core-splashscreen:1.0.1")
     implementation("androidx.wear:wear:1.3.0")
     implementation("androidx.wear:wear-input:1.1.0") // RemoteInput voice/keyboard helper
+    implementation("androidx.fragment:fragment-ktx:1.6.2") // pin >=1.3.0: registerForActivityResult requires it
 
     // Lifecycle / ViewModel for Compose
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0")
