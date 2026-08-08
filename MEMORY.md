@@ -29,7 +29,7 @@ the idle/ambient screen shown between prompts.
 
 ## Architecture & Patterns
 - **Backend**: `clawatch-bridge` — FastAPI on fenton (`~/clawatch-bridge`, systemd user
-  service, tailnet/LAN `192.168.0.22:8793`, bearer token in `~/clawatch-bridge/clawatch.env`).
+  service, tailnet/LAN `<bridge-host>:<bridge-port>`, bearer token in `~/clawatch-bridge/clawatch.env`).
   Wraps `tmux list-panes/capture-pane/send-keys` for `dev:1.*`. Injection-safe: argv lists,
   `send-keys -l -- <text>` then a separate `Enter`, pane addressed by validated integer index.
 - **App**: Compose for Wear OS. `BubbleActivity` → `CoworkApp` (`SwipeDismissableNavHost`).

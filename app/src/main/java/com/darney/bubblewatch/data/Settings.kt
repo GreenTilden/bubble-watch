@@ -1,6 +1,7 @@
 package com.darney.bubblewatch.data
 
 import android.content.Context
+import com.darney.bubblewatch.BuildConfig
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
@@ -32,7 +33,10 @@ class SettingsStore(private val context: Context) {
     }
 
     companion object {
-        // fenton's LAN IP + the bridge's default port. Editable on the Settings screen.
-        const val DEFAULT_BASE_URL = "http://192.168.0.22:8793"
+        // Per-install bridge address, supplied at build time from local.properties
+        // (DEFAULT_BRIDGE_URL) — see app/build.gradle.kts. Empty on a fresh clone;
+        // the Settings screen is the place to enter it. This was a hard-coded LAN
+        // address until 2026-08-07, in a repo anyone can read without logging in.
+        val DEFAULT_BASE_URL: String = BuildConfig.DEFAULT_BRIDGE_URL
     }
 }

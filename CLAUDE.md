@@ -9,7 +9,7 @@ Wear OS app, one launcher (`com.darney.bubblewatch`, label "Cowork"), two modes:
    screen shown while threads are working (a toddler can also just stay on it).
 
 Talks to **clawatch-bridge** (FastAPI on fenton, `~/clawatch-bridge`) at
-`http://192.168.0.22:8793` with a bearer token, entered on the app's Settings screen.
+`http://<bridge-host>:<bridge-port>` with a bearer token, entered on the app's Settings screen.
 
 ## Stack
 - Kotlin + Jetpack Compose for Wear OS; Wear Compose 1.3.0; compose-navigation;
@@ -27,10 +27,10 @@ Sideload **directly from fenton** over wireless debugging (watch paired to fento
 keys 2026-07-31; no daptop needed). The port changes per session — discover it:
 ```bash
 A=~/Android/Sdk/platform-tools/adb
-$A mdns services            # Pixel Watch 3 (wrist) = product:luna @ 192.168.0.18:PORT
-                            # Pixel Watch 2 (pendant) @ 192.168.0.145:PORT — update BOTH
-$A connect 192.168.0.18:PORT
-$A -s 192.168.0.18:PORT install -r app/build/outputs/apk/debug/app-debug.apk
+$A mdns services            # Pixel Watch 3 (wrist) = product:luna @ <watch-ip>:PORT
+                            # Pixel Watch 2 (pendant) @ <pendant-ip>:PORT — update BOTH
+$A connect <watch-ip>:PORT
+$A -s <watch-ip>:PORT install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 If connect is refused, wireless debugging is off on the watch — Settings → Developer
 options → Wireless debugging (pairing already done; just toggle it on).

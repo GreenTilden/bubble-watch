@@ -11,6 +11,13 @@ val localProps = Properties().apply {
 }
 val hasReleaseKeystore = localProps.getProperty("RELEASE_STORE_FILE") != null
 
+// THIS REPO IS PUBLIC. The bridge's LAN address is a per-install value, not a
+// constant to ship — it used to be hard-coded in Settings.kt and was readable by
+// anyone without a login. It comes from local.properties (gitignored) now, and
+// defaults to empty so a fresh clone builds and prompts on the Settings screen
+// rather than dialling someone else's network. Set DEFAULT_BRIDGE_URL there.
+val defaultBridgeUrl = localProps.getProperty("DEFAULT_BRIDGE_URL") ?: ""
+
 android {
     namespace = "com.darney.bubblewatch"
     compileSdk = 35
@@ -21,10 +28,13 @@ android {
         targetSdk = 35
         versionCode = 3
         versionName = "2.1"
+
+        buildConfigField("String", "DEFAULT_BRIDGE_URL", "\"$defaultBridgeUrl\"")
     }
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     composeOptions {
