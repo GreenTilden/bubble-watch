@@ -19,6 +19,12 @@ import kotlinx.coroutines.launch
 
 data class ThreadDetailUiState(
     val index: Int = -1,
+    // The pane this screen believes it is looking at. An INDEX is not an identity:
+    // tmux renumbers indices when a pane is killed, so index 3 can become a
+    // different Claude session between two polls. Read on every refresh and sent
+    // back as an assertion the bridge checks; null until the first poll lands, and
+    // null is a no-op server-side.
+    val paneId: String? = null,
     val title: String = "",
     val status: ThreadStatus = ThreadStatus.UNKNOWN,
     val lines: List<String> = emptyList(),
@@ -88,7 +94,10 @@ class ThreadDetailViewModel(app: Application) : AndroidViewModel(app) {
         try {
             val threads = repo.listThreads()
             val meta = threads.find { it.index == index }
-            val tail = repo.tail(index)
+            // Taken from THIS poll, not from stored state: it is the freshest reading
+            // of what index means, and every call below asserts against it.
+            val paneId = meta?.paneId ?: _state.value.paneId
+            val tail = repo.tail(index, paneId = paneId)
             val cur = _state.value
             val newStatus = meta?.statusEnum ?: ThreadStatus.UNKNOWN
             val newTitle = meta?.label?.ifBlank { meta.title } ?: cur.title
@@ -98,12 +107,17 @@ class ThreadDetailViewModel(app: Application) : AndroidViewModel(app) {
             // transitions — the user pulls them on demand via 💡 (requestSuggestions).
             // Nothing moved — emit nothing at all, so there's zero recomposition
             // for a thread parked at a question or idle. This is the calm case.
-            if (!linesChanged && !promptChanged &&
+            // paneId is part of "something moved" on purpose. Without it the calm
+            // path returns early and a quiet pane never learns its own identity --
+            // and worse, an index that has come to point at a DIFFERENT pane while
+            // nothing on screen changed is exactly the case that must not be silent.
+            if (!linesChanged && !promptChanged && paneId == cur.paneId &&
                 newStatus == cur.status && newTitle == cur.title && cur.error == null
             ) {
                 return
             }
             _state.value = cur.copy(
+                paneId = paneId,
                 title = newTitle,
                 status = newStatus,
                 // Keep the SAME instances when unchanged so their items don't recompose.
@@ -144,7 +158,7 @@ class ThreadDetailViewModel(app: Application) : AndroidViewModel(app) {
         if (suggestJob?.isActive == true) return
         suggestJob = viewModelScope.launch {
             _state.value = _state.value.copy(suggestionsLoading = true)
-            val sug = repo.suggest(index)
+            val sug = repo.suggest(index, paneId = _state.value.paneId)
             val cur = _state.value
             if (sug != cur.suggestions || cur.suggestionsLoading) {
                 _state.value = cur.copy(suggestions = sug, suggestionsLoading = false)
@@ -159,7 +173,7 @@ class ThreadDetailViewModel(app: Application) : AndroidViewModel(app) {
         promptSummaryJob?.cancel()
         promptSummaryJob = viewModelScope.launch {
             _state.value = _state.value.copy(promptSummary = "", promptSummaryLoading = true)
-            val s = repo.promptSummary(index)
+            val s = repo.promptSummary(index, paneId = _state.value.paneId)
             val cur = _state.value
             // Apply only if a menu is still up, so a late result can't flash after
             // the user already answered.
@@ -182,7 +196,7 @@ class ThreadDetailViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             _state.value = _state.value.copy(answering = true, error = null, suggestions = emptyList())
             try {
-                repo.send(index, key, submit = false)
+                repo.send(index, key, submit = false, paneId = _state.value.paneId)
             } catch (e: Exception) {
                 _state.value = _state.value.copy(answering = false, error = e.message ?: "send failed")
                 return@launch
@@ -198,9 +212,9 @@ class ThreadDetailViewModel(app: Application) : AndroidViewModel(app) {
         if (index < 0) return
         viewModelScope.launch {
             try {
-                repo.send(index, key, submit = false)
+                repo.send(index, key, submit = false, paneId = _state.value.paneId)
                 delay(600)
-                val tail = repo.tail(index)
+                val tail = repo.tail(index, paneId = _state.value.paneId)
                 _state.value = _state.value.copy(prompt = tail.prompt, lines = tail.lines, error = null)
             } catch (e: Exception) {
                 _state.value = _state.value.copy(error = e.message ?: "toggle failed")
@@ -218,7 +232,7 @@ class ThreadDetailViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             _state.value = _state.value.copy(answering = true, error = null, suggestions = emptyList())
             try {
-                repo.submitMenu(index)
+                repo.submitMenu(index, paneId = _state.value.paneId)
             } catch (e: Exception) {
                 _state.value = _state.value.copy(answering = false, error = e.message ?: "submit failed")
                 return@launch
@@ -236,7 +250,7 @@ class ThreadDetailViewModel(app: Application) : AndroidViewModel(app) {
             var latestLines = _state.value.lines
             repeat(NEXT_Q_POLLS) {
                 delay(NEXT_Q_INTERVAL_MS)
-                val tail = runCatching { repo.tail(index) }.getOrNull() ?: return@repeat
+                val tail = runCatching { repo.tail(index, paneId = _state.value.paneId) }.getOrNull() ?: return@repeat
                 latestLines = tail.lines
                 val p = tail.prompt
                 when {
@@ -284,7 +298,7 @@ class ThreadDetailViewModel(app: Application) : AndroidViewModel(app) {
         if (index < 0) return
         viewModelScope.launch {
             try {
-                repo.sendKey(index, action)
+                repo.sendKey(index, action, paneId = _state.value.paneId)
                 refreshOnce(index)
             } catch (e: Exception) {
                 _state.value = _state.value.copy(error = e.message ?: "key failed")
@@ -321,7 +335,7 @@ class ThreadDetailViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             try {
                 _state.value = _state.value.copy(bathStage = "🛁 …", error = null)
-                val started = repo.startWash(index)
+                val started = repo.startWash(index, paneId = _state.value.paneId)
 
                 // Poll the stage. 400ms is fast enough to feel live on a wrist and
                 // slow enough not to hammer the bridge; the cap is a backstop so a
@@ -429,7 +443,7 @@ class ThreadDetailViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             _state.value = _state.value.copy(sending = true)
             try {
-                repo.send(index, text, submit)
+                repo.send(index, text, submit, paneId = _state.value.paneId)
                 onOk()
                 // Suggestions were for the pre-send screen; drop them so nothing stale lingers.
                 // sendConfirm is the one-shot that plays the confirm + auto-returns.

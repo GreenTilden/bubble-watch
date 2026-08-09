@@ -68,7 +68,13 @@ class ThreadListViewModel(app: Application) : AndroidViewModel(app) {
      *  entries older than the stale window. Blank results (Haiku off / no key) still mark
      *  a fetch so we don't hammer — the row degrades to the plain status. */
     private fun refreshSummaries(threads: List<ThreadDto>) {
-        val working = threads.filter { it.statusEnum == ThreadStatus.WORKING }.map { it.index }.toSet()
+        // index -> paneId, rather than a bare index set. An index is not an identity:
+        // tmux renumbers on kill, so summarising "index 3" can summarise a different
+        // session than the row the summary is attached to. The paneId rides along and
+        // the bridge refuses the call (409) if the index has moved under us.
+        val workingPanes = threads.filter { it.statusEnum == ThreadStatus.WORKING }
+            .associate { it.index to it.paneId }
+        val working = workingPanes.keys
 
         val prunedMap = _state.value.summaries.filterKeys { it in working }
         if (prunedMap != _state.value.summaries) {
@@ -83,7 +89,7 @@ class ThreadListViewModel(app: Application) : AndroidViewModel(app) {
 
         summaryJob = viewModelScope.launch {
             for (idx in stale) {
-                val s = repo.summary(idx)
+                val s = repo.summary(idx, paneId = workingPanes[idx])
                 summaryFetchedAt[idx] = System.currentTimeMillis()
                 if (s.isNotBlank() && _state.value.summaries[idx] != s) {
                     _state.value = _state.value.copy(summaries = _state.value.summaries + (idx to s))
