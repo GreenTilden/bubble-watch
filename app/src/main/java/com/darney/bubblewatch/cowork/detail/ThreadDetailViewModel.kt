@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.darney.bubblewatch.AmbientState
 import com.darney.bubblewatch.data.BridgeRepository
 import com.darney.bubblewatch.data.CtxPressure
+import com.darney.bubblewatch.data.DigestDto
 import com.darney.bubblewatch.data.WashStatusDto
 import com.darney.bubblewatch.data.PromptDto
 import com.darney.bubblewatch.data.ThreadStatus
@@ -40,6 +41,11 @@ data class ThreadDetailUiState(
     // and when a new prompt / needs-input transition appears), not every tick.
     val suggestions: List<String> = emptyList(),
     val suggestionsLoading: Boolean = false,
+    // Catch-me-up digest (📰). Fetched ONLY on tap — it is the priciest LLM call
+    // on this screen (Sonnet over a 150-line history tail). null = not requested
+    // (or cleared as stale); an all-empty digest = "nothing to catch up on".
+    val digest: DigestDto? = null,
+    val digestLoading: Boolean = false,
     // Menu-aware "what you're being asked to decide" line, auto-fetched when a
     // prompt appears (cheap: the paused tail is static, so one Haiku call per prompt).
     val promptSummary: String = "",
@@ -67,6 +73,7 @@ class ThreadDetailViewModel(app: Application) : AndroidViewModel(app) {
     private var pollJob: Job? = null
     private var suggestJob: Job? = null
     private var promptSummaryJob: Job? = null
+    private var digestJob: Job? = null
 
     /** Begin polling tail + status for [index]. Safe to call repeatedly. */
     fun start(index: Int) {
@@ -166,6 +173,26 @@ class ThreadDetailViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** User-initiated catch-me-up (📰). The bridge reads a 150-line HISTORY tail —
+     *  lines above the visible screen — and answers "what was I doing and what are
+     *  my moves". On-demand only, same policy as 💡: nothing auto-fires it.
+     *  A null from the repo is a FAILED request and surfaces as an error; an empty
+     *  digest renders as "nothing to catch up on" — never conflate them. */
+    fun requestDigest() {
+        val index = _state.value.index
+        if (index < 0) return
+        if (digestJob?.isActive == true) return
+        digestJob = viewModelScope.launch {
+            _state.value = _state.value.copy(digestLoading = true)
+            val d = repo.digest(index, paneId = _state.value.paneId)
+            val cur = _state.value
+            _state.value = if (d == null)
+                cur.copy(digestLoading = false, error = "catch-me-up failed")
+            else
+                cur.copy(digest = d, digestLoading = false)
+        }
+    }
+
     /** Auto-fetch the menu-aware "what you're deciding" line when a prompt appears.
      *  Off the poll path, cancels any prior fetch on a new question, never throws
      *  (repo -> ""). Cheap: the paused tail is static, so it's one call per prompt. */
@@ -194,7 +221,9 @@ class ThreadDetailViewModel(app: Application) : AndroidViewModel(app) {
         if (index < 0) return
         val answered = _state.value.prompt
         viewModelScope.launch {
-            _state.value = _state.value.copy(answering = true, error = null, suggestions = emptyList())
+            // Digest cleared with the suggestions: both describe the pane as it was
+            // before this answer, and a stale "where it stands" is worse than none.
+            _state.value = _state.value.copy(answering = true, error = null, suggestions = emptyList(), digest = null)
             try {
                 repo.send(index, key, submit = false, paneId = _state.value.paneId)
             } catch (e: Exception) {
@@ -230,7 +259,7 @@ class ThreadDetailViewModel(app: Application) : AndroidViewModel(app) {
         if (index < 0) return
         val answered = _state.value.prompt
         viewModelScope.launch {
-            _state.value = _state.value.copy(answering = true, error = null, suggestions = emptyList())
+            _state.value = _state.value.copy(answering = true, error = null, suggestions = emptyList(), digest = null)
             try {
                 repo.submitMenu(index, paneId = _state.value.paneId)
             } catch (e: Exception) {
@@ -351,7 +380,7 @@ class ThreadDetailViewModel(app: Application) : AndroidViewModel(app) {
                 when (last?.outcome) {
                     "ok" -> {
                         _state.value = _state.value.copy(
-                            bathStage = "✓ context reset", suggestions = emptyList())
+                            bathStage = "✓ context reset", suggestions = emptyList(), digest = null)
                         refreshOnce(index)
                         delay(1500)
                         if (_state.value.bathStage == "✓ context reset") {
@@ -364,7 +393,7 @@ class ThreadDetailViewModel(app: Application) : AndroidViewModel(app) {
                     // is the honest difference.
                     "cleared_not_reseeded" -> {
                         _state.value = _state.value.copy(
-                            bathStage = "✓ cleared", suggestions = emptyList())
+                            bathStage = "✓ cleared", suggestions = emptyList(), digest = null)
                         refreshOnce(index)
                         delay(1800)
                         if (_state.value.bathStage == "✓ cleared") {
@@ -447,7 +476,7 @@ class ThreadDetailViewModel(app: Application) : AndroidViewModel(app) {
                 onOk()
                 // Suggestions were for the pre-send screen; drop them so nothing stale lingers.
                 // sendConfirm is the one-shot that plays the confirm + auto-returns.
-                _state.value = _state.value.copy(sending = false, error = null, suggestions = emptyList(), sendConfirm = true)
+                _state.value = _state.value.copy(sending = false, error = null, suggestions = emptyList(), digest = null, sendConfirm = true)
                 refreshOnce(index)
             } catch (e: Exception) {
                 _state.value = _state.value.copy(sending = false, error = e.message ?: "send failed")

@@ -114,6 +114,18 @@ data class SuggestResponseDto(val suggestions: List<String> = emptyList())
 /** One-line Haiku summary of what a WORKING thread is doing; empty on any failure. */
 data class SummaryResponseDto(val summary: String = "")
 
+/** Catch-me-up digest for a pane you left running: what it did (recap), where it
+ *  stands (state), what you could say next (options). All three empty is the bridge
+ *  saying "nothing to catch up on" — a real answer, distinct from a FAILED request
+ *  (null at the repository). The two must stay tellable apart. */
+data class DigestDto(
+    val recap: List<String> = emptyList(),
+    val state: String = "",
+    val options: List<String> = emptyList(),
+) {
+    val isEmpty: Boolean get() = recap.isEmpty() && state.isBlank() && options.isEmpty()
+}
+
 /** Where + how to reach the bridge. */
 data class BridgeConfig(val baseUrl: String, val token: String) {
     val isConfigured: Boolean get() = baseUrl.isNotBlank() && token.isNotBlank()

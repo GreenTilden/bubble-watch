@@ -283,6 +283,78 @@ fun ThreadDetailScreen(
                 }
             }
 
+            // 📰 Catch me up — the digest reads a 150-line HISTORY tail (lines above
+            // the visible screen) and answers "what was I doing and what are my
+            // moves". Offered only for a pane you LEFT: while WORKING the Keeper +
+            // summary already answer "is it still going", and the bridge leaves the
+            // when-to-offer judgement to the client on purpose. On-demand only —
+            // it is the priciest LLM call on this screen (Sonnet, its own meter rate).
+            if (state.status == ThreadStatus.IDLE || state.status == ThreadStatus.NEEDS_INPUT) {
+                item(key = "digestbtn") {
+                    Chip(
+                        onClick = { vm.requestDigest() },
+                        label = { Text(if (state.digestLoading) "📰 …" else "📰 Catch me up", maxLines = 1) },
+                        colors = ChipDefaults.secondaryChipColors(),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                if (state.digestLoading && state.digest == null) {
+                    item(key = "digestloading") {
+                        KeeperIndicator(label = "📰 reading back…", mode = KeeperMode.THINKING)
+                    }
+                }
+                state.digest?.let { d ->
+                    if (d.isEmpty) {
+                        // The bridge's real answer for a quiet pane — NOT an error.
+                        item(key = "digestempty") {
+                            Text(
+                                text = "▸ nothing to catch up on",
+                                color = CONTEXT_CUE,
+                                fontSize = 12.sp,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
+                    } else {
+                        // Where it stands — the one line to read if you read nothing else.
+                        if (d.state.isNotBlank()) {
+                            item(key = "digeststate") {
+                                Text(
+                                    text = "▸ ${d.state}",
+                                    color = CONTEXT_CUE,
+                                    fontSize = 12.sp,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                            }
+                        }
+                        d.recap.forEachIndexed { i, r ->
+                            item(key = "digestrecap$i") {
+                                Text(
+                                    text = "• $r",
+                                    fontSize = 11.sp,
+                                    lineHeight = 13.sp,
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                            }
+                        }
+                        // "What you could say next" — staged into the draft like a 💡
+                        // suggestion, so a digest option and a momentum reply fire the
+                        // same way (review, then Send draft).
+                        d.options.forEachIndexed { i, o ->
+                            item(key = "digestopt$i") {
+                                Chip(
+                                    label = { Text("💬 $o", fontSize = 12.sp, maxLines = 3) },
+                                    onClick = { vm.appendToDraft(o) },
+                                    colors = ChipDefaults.primaryChipColors(),
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
             // 💡 button — suggestions are NEVER fetched automatically (saves the
             // Haiku call). Tap to pull them; tap again to re-fetch. Results render
             // in the full-width stacked chips below. Full Chip = a real tap target.

@@ -45,4 +45,9 @@ interface BridgeApi {
 
     @POST
     suspend fun promptSummary(@Url url: String): SummaryResponseDto
+
+    /** Catch-me-up digest over a deep (history) tail. Server-side this is a Sonnet
+     *  call with a 30s budget — call it through the SLOW client, never the 15s one. */
+    @POST
+    suspend fun digest(@Url url: String): DigestDto
 }

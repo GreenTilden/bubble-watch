@@ -30,6 +30,7 @@ class BridgeRepository private constructor(context: Context) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private val api: BridgeApi
+    private val slowApi: BridgeApi
 
     init {
         scope.launch { configFlow.collect { config = it } }
@@ -42,13 +43,24 @@ class BridgeRepository private constructor(context: Context) {
             .callTimeout(15, TimeUnit.SECONDS)
             .build()
 
-        api = Retrofit.Builder()
+        // The digest route runs a Sonnet call with a 30s server-side budget
+        // (CLAWATCH_DIGEST_TIMEOUT) — the shared 15s callTimeout would abandon it
+        // mid-generation while the bridge keeps paying for the answer. newBuilder()
+        // shares the connection pool + dispatcher, so this is a timeout override,
+        // not a second HTTP stack.
+        val slowClient = client.newBuilder()
+            .readTimeout(35, TimeUnit.SECONDS)
+            .callTimeout(35, TimeUnit.SECONDS)
+            .build()
+
+        val retrofit = Retrofit.Builder()
             // Placeholder base; every call passes an absolute @Url.
             .baseUrl("http://localhost/")
             .client(client)
             .addConverterFactory(GsonConverterFactory.create())
             .build()
-            .create(BridgeApi::class.java)
+        api = retrofit.create(BridgeApi::class.java)
+        slowApi = retrofit.newBuilder().client(slowClient).build().create(BridgeApi::class.java)
     }
 
     private fun base(): String = config.base
@@ -112,6 +124,14 @@ class BridgeRepository private constructor(context: Context) {
     suspend fun summary(index: Int, paneId: String? = null): String =
         runCatching { api.summary("${base()}/api/threads/$index/summary" + paneQ(paneId)).summary }
             .getOrDefault("")
+
+    /** Catch-me-up digest over a deep (history) tail. null = the request FAILED;
+     *  an all-empty DigestDto is the bridge answering "nothing to catch up on".
+     *  Unlike suggest/summary this does not swallow to a default — collapsing the
+     *  two would render a network failure as a reassuring blank. */
+    suspend fun digest(index: Int, paneId: String? = null): DigestDto? =
+        runCatching { slowApi.digest("${base()}/api/threads/$index/digest" + paneQ(paneId)) }
+            .getOrNull()
 
     /** Menu-aware "what you're being asked to decide" line for a paused thread.
      *  Swallows any failure to "" so the detail screen just shows the options. */
