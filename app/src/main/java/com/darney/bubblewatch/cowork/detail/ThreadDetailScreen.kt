@@ -48,6 +48,7 @@ import com.darney.bubblewatch.cowork.threads.meterColor
 import com.darney.bubblewatch.cowork.threads.meterLabel
 import com.darney.bubblewatch.cowork.threads.statusColor
 import com.darney.bubblewatch.data.ThreadStatus
+import com.darney.bubblewatch.ui.BUBBLE_GREEN
 import com.darney.bubblewatch.ui.KeeperIndicator
 import com.darney.bubblewatch.ui.KeeperMode
 import com.darney.bubblewatch.ui.SentCheck
@@ -185,6 +186,51 @@ fun ThreadDetailScreen(
             if (state.status == ThreadStatus.WORKING) {
                 item(key = "working") {
                     KeeperIndicator(label = "working…", mode = KeeperMode.THINKING)
+                }
+            }
+
+            // Claude's closing message, above the pane and in the Keeper's own
+            // bubble green.
+            //
+            // WHY IT IS NOT JUST A BIGGER LINE OF THE TAIL: the tail is a photograph
+            // of a terminal, wrapped to whatever column count the desktop had, and
+            // this screen clips each of those lines to one row at 9sp. The line that
+            // matters most on a watch -- the question you came to answer -- is
+            // therefore the one guaranteed to be cut off. These lines come from the
+            // transcript instead: logical lines, never wrapped by anything, so they
+            // re-flow to 1.4" at a readable size.
+            //
+            // Empty while the pane is working, or when the session ends on a tool
+            // call, so the block appearing IS the signal. See HistoryDto.lastTurn --
+            // the count is the bridge's, because the wire cannot be read for it.
+            if (state.closing.isNotEmpty()) {
+                if (!state.closingIsThisPane) {
+                    item(key = "closingwarn") {
+                        Text(
+                            // Two sessions in one repo is normal here, and reading
+                            // the pane next door's message under this pane's name is
+                            // a privacy failure rather than a display glitch.
+                            text = "⚠ may not be this pane",
+                            color = AMBER,
+                            fontSize = 10.sp,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                }
+                state.closing.forEachIndexed { i, line ->
+                    item(key = "closing$i") {
+                        Text(
+                            text = line,
+                            color = BUBBLE_GREEN,
+                            fontSize = 12.sp,
+                            lineHeight = 15.sp,
+                            // Wrapped, unlike every other line on this screen. That
+                            // is the whole difference between a message and a photo
+                            // of a terminal.
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
                 }
             }
 

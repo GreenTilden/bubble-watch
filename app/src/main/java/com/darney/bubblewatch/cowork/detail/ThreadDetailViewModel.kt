@@ -29,6 +29,17 @@ data class ThreadDetailUiState(
     val title: String = "",
     val status: ThreadStatus = ThreadStatus.UNKNOWN,
     val lines: List<String> = emptyList(),
+    // Claude's closing message, from the transcript rather than the screen: the
+    // last thing said to you, unwrapped by any terminal, so the watch re-flows it
+    // at 12sp instead of clipping a 200-column line to 40 characters. Empty
+    // whenever the pane is working, ends on a tool call, or the bridge is too old
+    // to answer -- in all three cases the screen is exactly what it was before.
+    val closing: List<String> = emptyList(),
+    // False when the bridge only GUESSED which transcript is this pane's (two
+    // sessions in one repo is normal). Shown as a caveat rather than hidden: the
+    // message is still probably right, and silently dropping it would leave the
+    // watch with no explanation for why the block comes and goes.
+    val closingIsThisPane: Boolean = true,
     val prompt: PromptDto? = null,
     val draft: String = "",
     val sending: Boolean = false,
@@ -108,8 +119,24 @@ class ThreadDetailViewModel(app: Application) : AndroidViewModel(app) {
             val cur = _state.value
             val newStatus = meta?.statusEnum ?: ThreadStatus.UNKNOWN
             val newTitle = meta?.label?.ifBlank { meta.title } ?: cur.title
+            // The transcript is read only while the pane is NOT working, which is
+            // both halves of the point: a working pane has no closing message (it
+            // is mid-sentence), and the working poll is the fast one, so this adds
+            // a third request per tick to the 10s lane and none to the 5s lane.
+            val hist = if (newStatus == ThreadStatus.WORKING) null
+                       else repo.history(index, paneId = paneId)
+            val newClosing = when {
+                // Cleared, not kept: the moment Claude starts writing again, the
+                // last message is no longer the last word on anything.
+                newStatus == ThreadStatus.WORKING -> emptyList()
+                hist != null -> hist.closing
+                // A failed read (or a bridge without the route) keeps what we last
+                // knew rather than flickering the block out on one dropped request.
+                else -> cur.closing
+            }
             val linesChanged = tail.lines != cur.lines
             val promptChanged = tail.prompt != cur.prompt
+            val closingChanged = newClosing != cur.closing
             // Suggestions are no longer auto-fetched on prompt / needs-input
             // transitions — the user pulls them on demand via 💡 (requestSuggestions).
             // Nothing moved — emit nothing at all, so there's zero recomposition
@@ -118,7 +145,7 @@ class ThreadDetailViewModel(app: Application) : AndroidViewModel(app) {
             // path returns early and a quiet pane never learns its own identity --
             // and worse, an index that has come to point at a DIFFERENT pane while
             // nothing on screen changed is exactly the case that must not be silent.
-            if (!linesChanged && !promptChanged && paneId == cur.paneId &&
+            if (!linesChanged && !promptChanged && !closingChanged && paneId == cur.paneId &&
                 newStatus == cur.status && newTitle == cur.title && cur.error == null
             ) {
                 return
@@ -129,6 +156,8 @@ class ThreadDetailViewModel(app: Application) : AndroidViewModel(app) {
                 status = newStatus,
                 // Keep the SAME instances when unchanged so their items don't recompose.
                 lines = if (linesChanged) tail.lines else cur.lines,
+                closing = if (closingChanged) newClosing else cur.closing,
+                closingIsThisPane = hist?.isThisPane ?: cur.closingIsThisPane,
                 prompt = if (promptChanged) tail.prompt else cur.prompt,
                 moreQuestions = if (promptChanged) false else cur.moreQuestions,
                 promptSummary = if (promptChanged) "" else cur.promptSummary,

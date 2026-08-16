@@ -16,6 +16,12 @@ interface BridgeApi {
     @GET
     suspend fun tail(@Url url: String): TailDto
 
+    /** Session history from Claude's transcript. The tail reads a SCREEN; this
+     *  reads what Claude wrote, which is the only source that carries a message
+     *  boundary — see HistoryDto. */
+    @GET
+    suspend fun history(@Url url: String): HistoryDto
+
     @POST
     suspend fun send(@Url url: String, @Body body: SendRequest): SendResponse
 

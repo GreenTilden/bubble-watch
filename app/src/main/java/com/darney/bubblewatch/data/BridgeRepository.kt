@@ -94,6 +94,24 @@ class BridgeRepository private constructor(context: Context) {
         api.tail("${base()}/api/threads/$index/tail?lines=$lines&scrollback=false"
             + paneQ(paneId, existingQuery = true))
 
+    /** Session history from Claude's transcript, for the closing message.
+     *
+     *  null = the request failed OR the bridge is too old to have the route, and
+     *  the screen shows the pane tail exactly as it always did. Swallowed rather
+     *  than surfaced because this is an ADDITION to a screen that already works:
+     *  an error banner over a readable pane would be a regression for a feature
+     *  that is merely absent.
+     *
+     *  60 lines, not the tail's 40: these are logical lines and most of them are
+     *  one-line tool calls, so 40 can end mid-message on a busy pane. The count
+     *  that matters (lastTurn) is computed server-side over the whole session, but
+     *  the LINES it points at have to be inside the window we asked for. */
+    suspend fun history(index: Int, lines: Int = 60, paneId: String? = null): HistoryDto? =
+        runCatching {
+            api.history("${base()}/api/threads/$index/history?lines=$lines&before=0"
+                + paneQ(paneId, existingQuery = true))
+        }.getOrNull()
+
     suspend fun send(index: Int, text: String, submit: Boolean, paneId: String? = null): SendResponse =
         api.send("${base()}/api/threads/$index/send" + paneQ(paneId), SendRequest(text, submit))
 

@@ -56,7 +56,9 @@ private val TUB = Color(0xFFE3EBF2)
 private val TUB_SH = Color(0xFFB6C6D4)
 private val WATER = Color(0x9970C8E6)     // translucent cyan — the mark shows through
 private val FOAM = Color(0xFFFFFFFF)
-private val BUBBLE_GREEN = Color(0xFF3DDC84) // Android-green soap bubbles (the green-bubbles flex)
+// Internal, not private: the thread detail screen paints Claude's closing message
+// in it, and one brand green declared twice is how two greens end up on one screen.
+internal val BUBBLE_GREEN = Color(0xFF3DDC84) // Android-green soap bubbles (the green-bubbles flex)
 private val LABEL = Color(0xFFFFB300)
 
 enum class KeeperMode { THINKING, BATH }
